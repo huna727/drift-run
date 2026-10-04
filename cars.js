@@ -25,6 +25,25 @@ export const CAR_DEFS = {
     bpillar: -0.45, popup: true,
     wingSpec: { z: -1.85, hw: 0.6, chord: 0.24, h: 0.26 },
   },
+  kei: {
+    id: 'kei', name: 'Kei', price: 4000, paint: 0xa8d8f0,
+    tag: 'Tiny buzzbox. Slow, but it tips into every corner.',
+    mods: { power: 0.86, top: 0.82, grip: 0.94, drift: 1.15, steer: 1.08 },
+    wb: 2.1, front: { R: 0.28, w: 0.17 }, rear: { R: 0.28, w: 0.17 }, fd: 4.5, wing: 0,
+    rows: [
+      [1.75, .34, .58, .56, .68, .78, .54],
+      [1.60, .30, .72, .60, .76, .90, .66],
+      [1.25, .28, .76, .62, .80, .96, .72],
+      [0.70, .28, .78, .64, .80, 1.02, .74],
+      [-0.30, .28, .78, .66, .80, 1.06, .74],
+      [-1.20, .28, .78, .66, .80, 1.06, .74],
+      [-1.65, .32, .72, .62, .78, 1.0, .70],
+      [-1.75, .36, .60, .58, .72, .92, .62],
+    ],
+    cab: [[0.85, null, .72, .72], [0.40, 1.72, .72, .58], [-1.15, 1.72, .72, .58], [-1.55, null, .72, .72]],
+    bpillar: -0.35,
+    wingSpec: { z: -1.55, hw: 0.5, chord: 0.18, h: 0.14 },
+  },
   corsa: {
     id: 'corsa', name: 'Corsa-S', price: 6000, paint: 0xff4d6d,
     tag: 'Low, wide sports coupe with a fastback roof and GT wing.',
@@ -44,10 +63,29 @@ export const CAR_DEFS = {
     bpillar: -0.3,
     wingSpec: { z: -1.95, hw: 0.7, chord: 0.26, h: 0.3 },
   },
+  pickup: {
+    id: 'pickup', name: 'Pickup', price: 8000, paint: 0x8b6a3a,
+    tag: 'Short-bed truck. Long wheelbase, lazy slides.',
+    mods: { power: 1.02, top: 0.96, grip: 0.94, drift: 1.10, steer: 0.94 },
+    wb: 3.0, front: { R: 0.36, w: 0.24 }, rear: { R: 0.36, w: 0.26 }, fd: 3.6, wing: 0,
+    rows: [
+      [2.35, .32, .68, .58, .82, .78, .62],
+      [2.20, .28, .88, .62, .94, .88, .80],
+      [1.75, .26, .94, .68, .975, 1.0, .90],
+      [0.85, .26, .96, .72, .985, 1.04, .94],
+      [-0.20, .26, .96, .74, .985, 1.04, .94],
+      [-1.85, .26, .94, .74, .975, 1.0, .90],
+      [-2.35, .30, .82, .70, .88, .92, .78],
+      [-2.55, .34, .68, .66, .80, .86, .70],
+    ],
+    cab: [[0.55, null, .88, .88], [-0.10, 1.48, .88, .76], [-1.05, 1.48, .88, .76], [-1.55, null, .88, .88]],
+    bpillar: -0.55, scoop: { z: 1.35, w: 0.5, l: 0.55, h: 0.06 },
+    wingSpec: { z: -2.4, hw: 0.85, chord: 0.22, h: 0.20 },
+  },
   muscle: {
     id: 'muscle', name: 'Muscle', price: 12000, paint: 0xffb703,
     tag: 'Long hood, big shoulders, loud pedal. Hold on.',
-    mods: { power: 1.04, top: 1.02, grip: 0.98, drift: 0.98, steer: 0.97 },
+    mods: { power: 1.04, top: 1.02, grip: 0.96, drift: 1.0, steer: 0.97 },
     wb: 2.8, front: { R: 0.35, w: 0.255 }, rear: { R: 0.36, w: 0.3 }, fd: 3.7, wing: 0,
     rows: [
       [2.45, .30, .70, .56, .84, .74, .62],
@@ -62,6 +100,25 @@ export const CAR_DEFS = {
     cab: [[0.55, null, .84, .84], [-0.10, 1.42, .84, .72], [-1.0, 1.42, .84, .72], [-1.85, null, .84, .84]],
     bpillar: -0.5, scoop: { z: 1.2, w: 0.5, l: 0.65, h: 0.07 },
     wingSpec: { z: -2.2, hw: 0.7, chord: 0.2, h: 0.18 },
+  },
+  volt: {
+    id: 'volt', name: 'Volt', price: 14000, paint: 0x2ec4b6,
+    tag: 'Silent EV. Instant torque, low grip, huge slides.',
+    mods: { power: 1.14, top: 1.0, grip: 0.90, drift: 1.12, steer: 1.0 },
+    wb: 2.75, front: { R: 0.34, w: 0.24 }, rear: { R: 0.34, w: 0.26 }, fd: 3.4, wing: 0,
+    rows: [
+      [2.30, .22, .68, .38, .82, .52, .60],
+      [2.15, .18, .84, .42, .90, .60, .74],
+      [1.55, .16, .90, .48, .94, .72, .80],
+      [0.75, .16, .92, .54, .96, .82, .84],
+      [-0.20, .16, .94, .60, .98, .92, .86],
+      [-1.30, .16, .94, .64, .98, .96, .88],
+      [-1.95, .18, .88, .64, .94, .94, .82],
+      [-2.20, .22, .74, .60, .86, .88, .72],
+    ],
+    cab: [[0.75, null, .84, .84], [0.10, 1.36, .84, .70], [-1.10, 1.36, .84, .70], [-1.85, null, .84, .84]],
+    bpillar: -0.40,
+    wingSpec: { z: -2.05, hw: 0.7, chord: 0.22, h: 0.16 },
   },
   rallye: {
     id: 'rallye', name: 'Rallye', price: 18000, paint: 0x2f7dff,
@@ -81,6 +138,25 @@ export const CAR_DEFS = {
     cab: [[0.85, null, .8, .8], [0.2, 1.46, .8, .66], [-1.45, 1.46, .8, .66], [-2.0, null, .8, .8]],
     bpillar: -0.6, scoop: { z: 1.05, w: 0.46, l: 0.55, h: 0.08 },
     wingSpec: { z: -2.05, hw: 0.74, chord: 0.3, h: 0.34 },
+  },
+  gt3: {
+    id: 'gt3', name: 'GT3', price: 24000, paint: 0xff9a3c,
+    tag: 'Race-bred aero monster. Grip on grip on grip.',
+    mods: { power: 1.15, top: 1.08, grip: 1.14, drift: 0.86, steer: 1.06 },
+    wb: 2.65, front: { R: 0.36, w: 0.30 }, rear: { R: 0.36, w: 0.34 }, fd: 3.5, wing: 9,
+    rows: [
+      [2.35, .18, .78, .32, .92, .42, .66],
+      [2.15, .14, .94, .36, 1.00, .48, .80],
+      [1.55, .12, .98, .42, 1.04, .58, .88],
+      [0.70, .12, 1.00, .50, 1.06, .72, .94],
+      [-0.30, .12, 1.02, .56, 1.08, .84, .98],
+      [-1.30, .12, 1.02, .60, 1.08, .90, 1.00],
+      [-1.95, .14, .96, .60, 1.02, .90, .92],
+      [-2.20, .18, .82, .56, .94, .84, .78],
+    ],
+    cab: [[0.70, null, .82, .82], [0.05, 1.28, .82, .68], [-0.75, 1.28, .82, .68], [-1.65, null, .82, .82]],
+    bpillar: -0.25, vents: { z: -1.0, y: 0.65, l: 0.7, h: 0.14 },
+    wingSpec: { z: -2.15, hw: 0.9, chord: 0.32, h: 0.38 },
   },
   apex: {
     id: 'apex', name: 'Apex GT', price: 30000, paint: 0x6df0c2,
@@ -102,7 +178,7 @@ export const CAR_DEFS = {
     wingSpec: { z: -2.2, hw: 0.8, chord: 0.28, h: 0.3 },
   },
 };
-export const CAR_ORDER = ['hachi', 'corsa', 'muscle', 'rallye', 'apex'];
+export const CAR_ORDER = ['hachi', 'kei', 'corsa', 'pickup', 'muscle', 'volt', 'rallye', 'gt3', 'apex'];
 
 const lerp = (a, b, t) => a + (b - a) * t;
 
