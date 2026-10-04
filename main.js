@@ -3,7 +3,6 @@ import { CAR_DEFS, CAR_ORDER, bodyLoft, cabinLoft, sampleBody, halfWidthAt, samp
 import { MP_R, MAX_SEG, MAX_ORBS, PCOLORS, PNAMES, KEYMAPS, layout as vpLayout, createMatch, updateMatch, arenaR, segmentPoses, susStep } from './multi.js';
 import { TIERS, COMPOUNDS, TUNE_GROUPS, PRESETS, defaultTune, derive } from './tuning.js';
 
-/* ================= STATE THAT DEPENDS ON THE MAP ================= */
 let WALL = 150, ISL = 38;
 const CR = 1.6;
 let HORIZON = 0xcfe6ff;
@@ -479,6 +478,7 @@ function liveryTex(def, hex, b) {
 }
 const liveryMat = (def, hex, b) => new THREE.MeshStandardMaterial({ map: liveryTex(def, hex, b), flatShading: true, roughness: 0.42, metalness: 0.22, side: THREE.DoubleSide });
 function repaint(m, hex) {
+  if (!m) return;
   m.solid.color.setHex(hex);
   m.paint.map.dispose();
   m.paint.map = liveryTex(m.def, hex, m.bb);
@@ -574,7 +574,7 @@ function buildCockpitDriver(scl) {
 
 function buildStandingCrew() {
   const g = new THREE.Group();
-  const legY = 0.05, shinTop = 0.50, hipY = 0.92, shoulderY = 1.42, neckY = 1.48, headY = 1.58, headR = 0.12;
+  const legY = 0.05, shinTop = 0.50, hipY = 0.92, neckY = 1.48, headY = 1.58, headR = 0.12;
   for (const sx of [1, -1]) {
     g.add(mkBar([sx * 0.11, hipY, 0], [sx * 0.10, shinTop, 0.01], 0.09, suitMat, 8));
     g.add(mkBar([sx * 0.10, shinTop, 0.01], [sx * 0.10, legY, 0.04], 0.08, suitMat, 8));
@@ -1094,13 +1094,17 @@ function renderSettings() {
 function renderMaps() {
   const cards = MAPS.map((mapDef, i) => {
     const sel = mapDef.id === save.map;
-    return h('button', { class: 'map-card' + (sel ? ' sel' : ''), type: 'button', onclick: () => { setMap(mapDef.id); keepScroll(renderMaps); } },
+    return h('button', { class: 'map-card' + (sel ? ' sel' : ''), type: 'button', onclick: () => { setMap(mapDef.id); renderMaps(); } },
       h('span', { class: 'm-thumb t' + (i + 1) }, 'TRACK'),
       h('span', { class: 'm-info' }, h('b', {}, mapDef.name), h('span', {}, mapDef.desc)),
       h('span', { class: 'm-go' }, sel ? 'SELECTED' : 'SELECT'));
   });
-  mLeft.replaceChildren(h('div', { class: 'm-screen' }, mHead('PICK A MAP'), h('p', { class: 'm-sub' }, 'Each map has its own grip, obstacles, and painted drift line.'), h('div', { class: 'm-list' }, ...cards)));
-  footSet(mStatus('Current: ' + currentMap.name), sbtn('Back', () => openMenu('home')));
+  mLeft.replaceChildren(h('div', { class: 'm-screen' }, mHead('PICK A MAP'), h('p', { class: 'm-sub' }, 'Tap a map to select it, then hit Continue to choose a mode.'), h('div', { class: 'm-list' }, ...cards)));
+  footSet(
+    mStatus('Current: ' + currentMap.name),
+    sbtn('Back', () => openMenu('home')),
+    sbtn('Continue', () => openMenu('modes'), 'primary')
+  );
 }
 function renderModes() {
   mLeft.replaceChildren(
@@ -1278,7 +1282,8 @@ const D2R_ = Math.PI / 180;
 const cog = $('mCog'); if (cog) cog.addEventListener('click', () => { if (menu === 'settings') openMenu('home'); else openMenu('settings'); });
 
 const dial = (() => {
-  const svg = $('dial'), NS = 'http://www.w3.org/2000/svg', C = 100, A0 = -135, SW = 270;
+  const svg = $('dial'); if (!svg) return null;
+  const NS = 'http://www.w3.org/2000/svg', C = 100, A0 = -135, SW = 270;
   const pt = (r, deg) => [C + r * Math.sin(deg * D2R_), C - r * Math.cos(deg * D2R_)];
   const mk = (tag, at, par = svg) => { const e = document.createElementNS(NS, tag); for (const k in at) e.setAttribute(k, at[k]); par.append(e); return e; };
   const pts = Array.from({ length: 12 }, (_, i) => pt(96, i * 30 + 15).join(',')).join(' ');
@@ -1506,7 +1511,7 @@ function crash(impact) {
   pending = 0; driftT = 0; gap = 0;
 }
 
-/* ================= SCORING / HUD ================= */
+/* ================= SCORING ================= */
 const toastEl = $('toast');
 function toast(t, bad) {
   if (!toastEl) return;
