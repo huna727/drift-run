@@ -156,10 +156,15 @@ export function addOrb(m, x, z) {
   o.on = true; o.x = x; o.z = z; o.hue = Math.random(); o.born = m.time;
 }
 export function randomOrb(m) {
-  const R = arenaR(m) * 0.9;
+  const R = arenaR(m) * 0.9, minR = ISL + 6;
+  if (R <= minR) { addOrb(m, 0, 0); return; }
+  // try a few spots, keep it away from any live car so orbs don't pop in on top of someone
   for (let k = 0; k < 20; k++) {
-    const a = Math.random() * Math.PI * 2, r = ISL + 6 + Math.random() * (R - ISL - 6);
-    addOrb(m, Math.sin(a) * r, Math.cos(a) * r); return;
+    const a = Math.random() * Math.PI * 2, r = minR + Math.random() * (R - minR);
+    const x = Math.sin(a) * r, z = Math.cos(a) * r;
+    let clear = true;
+    if (m.cars) for (const c of m.cars) if (c.alive && Math.hypot(c.x - x, c.z - z) < 4) { clear = false; break; }
+    if (clear || k === 19) { addOrb(m, x, z); return; }
   }
 }
 
@@ -232,7 +237,6 @@ export function updateMatch(m, inputs, dt) {
         const d = Math.min(Math.hypot(o.x - f[0].x, o.z - f[0].z), Math.hypot(o.x - c.x, o.z - c.z));
         if (d < 2.5) { o.on = false; c.orbs++; const segs = Math.min(MAX_SEG, Math.floor(c.orbs / 2)); if (segs > c.segs) out.push({ type: 'grow', car: c.i, segs }); c.segs = segs; out.push({ type: 'pickup', car: c.i }); }
       }
-      if (o_inactive(m) > MAX_ORBS - BASE_ORBS) { /* plenty of room */ }
     }
     let on = m.orbs.filter(o => o.on).length;
     while (on < BASE_ORBS) { randomOrb(m); on++; }
@@ -259,7 +263,6 @@ export function updateMatch(m, inputs, dt) {
   }
   return out;
 }
-const o_inactive = m => m.orbs.filter(o => !o.on).length;
 function dropOrbs(m, c, poses) {
   addOrb(m, c.x, c.z);
   for (const p of poses) { addOrb(m, p.x + (Math.random() - 0.5) * 2, p.z + (Math.random() - 0.5) * 2); addOrb(m, p.x + (Math.random() - 0.5) * 3, p.z + (Math.random() - 0.5) * 3); }

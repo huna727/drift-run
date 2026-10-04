@@ -25,7 +25,6 @@ const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 30
 
 const M = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, flatShading: true, roughness: 0.9, metalness: 0, ...o });
 
-// sky dome (low segment count = poly banding)
 const sky = (() => {
   const g = new THREE.SphereGeometry(1500, 20, 12), p = g.attributes.position, col = [];
   const a = new THREE.Color(HORIZON), b = new THREE.Color(TOP), c = new THREE.Color();
@@ -66,7 +65,6 @@ for (const r of [62, 94, 126]) {
   scene.add(ring);
 }
 
-// island + tower
 const island = new THREE.Mesh(new THREE.CylinderGeometry(ISL - 1, ISL + 1.5, 3, 28), M(0x7a8398));
 island.position.y = 1.5; island.castShadow = island.receiveShadow = true;
 const top = new THREE.Mesh(new THREE.CylinderGeometry(ISL - 3, ISL - 3, 0.2, 28), M(0x5f9a63));
@@ -77,7 +75,6 @@ const roof = new THREE.Mesh(new THREE.ConeGeometry(7, 7, 6), M(0xe63946));
 roof.position.y = 28.5; roof.castShadow = true;
 scene.add(island, top, tower, roof);
 
-// barrier ring
 {
   const N = 80, mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(11.7, 1.3, 1.2), M(0xffffff), N);
   const d = new THREE.Object3D(), c = new THREE.Color();
@@ -92,7 +89,6 @@ scene.add(island, top, tower, roof);
   scene.add(mesh);
 }
 
-// tyre stacks (collidable)
 const OBST = [];
 {
   const tyre = M(0x1c1c20), stripe = M(0xf4f4f4), geo = new THREE.CylinderGeometry(1.15, 1.15, 0.5, 10);
@@ -108,7 +104,6 @@ const OBST = [];
   }
 }
 
-// drift zones (one is "hot" at a time) + bank pad
 const ZONES = [45, 135, 225, 315].map(deg => {
   const a = deg * Math.PI / 180, x = Math.sin(a) * 100, z = Math.cos(a) * 100;
   const mat = new THREE.MeshBasicMaterial({ color: 0x66ccff, transparent: true, opacity: 0.1, depthWrite: false });
@@ -123,7 +118,6 @@ const PAD = { x: 0, z: 95, r: 8 };
 }
 let zoneI = 0, zoneT = 0;
 
-// trees + mountains
 {
   const N = 180, trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.4, 0.6, 3, 5), M(0x5b4636), N);
   const crown = new THREE.InstancedMesh(new THREE.ConeGeometry(3, 8, 6), M(0xffffff), N);
@@ -146,8 +140,6 @@ let zoneI = 0, zoneT = 0;
   }
 }
 
-
-// puffy clouds
 {
   const c = document.createElement('canvas'); c.width = c.height = 128;
   const g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 4, 64, 64, 62);
@@ -164,7 +156,6 @@ let zoneI = 0, zoneT = 0;
     }
   }
 }
-// chain-link fence round the arena
 {
   const c = document.createElement('canvas'); c.width = c.height = 64;
   const g = c.getContext('2d'); g.strokeStyle = '#1b1b22'; g.lineWidth = 3;
@@ -177,12 +168,11 @@ let zoneI = 0, zoneT = 0;
   scene.add(posts);
 }
 
-/* ================= STUDIO (garage backdrop, used by the menus) ================= */
+/* ================= STUDIO ================= */
 const STAGE = { x: 0, y: 600, z: 0 };
 {
   const g = new THREE.Group(); g.position.set(STAGE.x, STAGE.y, STAGE.z);
   const HALF = 17, H = 14, box = (w, h, d, mat, x, y, z, par = g) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; par.add(m); return m; };
-  // corrugated steel walls
   const cv = document.createElement('canvas'); cv.width = cv.height = 256;
   { const x = cv.getContext('2d'); x.fillStyle = '#b8bdc6'; x.fillRect(0, 0, 256, 256);
     for (let i = 0; i < 256; i += 16) { x.fillStyle = i % 32 ? '#a7acb6' : '#cfd3da'; x.fillRect(i, 0, 8, 256); }
@@ -194,36 +184,31 @@ const STAGE = { x: 0, y: 600, z: 0 };
   floor.position.y = 0.01; floor.receiveShadow = true; g.add(floor);
   const disc = new THREE.Mesh(new THREE.CylinderGeometry(4.6, 4.6, 0.08, 40), M(0x3a3d4a, { roughness: 0.5 })); disc.position.y = 0.05; disc.receiveShadow = true; g.add(disc);
   const ring = new THREE.Mesh(new THREE.RingGeometry(4.2, 4.5, 48).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffd23f })); ring.position.y = 0.1; g.add(ring);
-  // workbench + pegboard on the back wall
   const wood = M(0xb27a44), metal = M(0xc9ced6, { metalness: 0.6, roughness: 0.4 }), dk = M(0x23252d);
   box(15, 7, 0.4, wood, 0, 5.2, -HALF + 0.3);
   for (let i = 0; i < 9; i++) box(0.22, 1.6 + (i % 3) * 0.25, 0.12, metal, -5.5 + i * 0.5, 6.4, -HALF + 0.6);
   for (let i = 0; i < 5; i++) { const t = box(0.35, 0.18, 1.6, dk, 1 + i * 0.7, 6.2, -HALF + 0.6); t.rotation.z = 0.3 * (i % 2 ? 1 : -1); }
   box(15, 0.35, 3, wood, 0, 1.9, -HALF + 1.8); box(0.5, 1.9, 2.6, dk, -7, 0.95, -HALF + 1.8); box(0.5, 1.9, 2.6, dk, 7, 0.95, -HALF + 1.8);
   box(14, 0.2, 2.4, dk, 0, 0.7, -HALF + 1.8);
-  // shelf of spray cans + oil bottles
   box(9, 0.2, 1.2, metal, -2, 9.3, -HALF + 0.9);
   const cols = [0xe63946, 0xffd23f, 0x2f9bff, 0xf4f4f4, 0x3ddc5a];
   for (let i = 0; i < 18; i++) { const can = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.9, 8), M(cols[i % 5])); can.position.set(-6 + i * 0.5, 9.85, -HALF + 0.9); can.castShadow = true; g.add(can); }
-  // stool
   const stool = new THREE.Group(); stool.position.set(5.5, 0, -HALF + 4.6);
   const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.18, 14), dk); seat.position.y = 1.6; stool.add(seat);
   const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.6, 6), metal); leg.position.y = 0.8; stool.add(leg); g.add(stool);
-  // tyre rack on the left wall
   const rack = new THREE.Group(); rack.position.set(-HALF + 2, 0, 3);
   box(0.25, 5.5, 4.4, dk, -0.4, 2.75, 0, rack); box(2.4, 0.25, 4.4, dk, 0.6, 0.2, 0, rack); box(2.4, 0.25, 4.4, dk, 0.6, 2.6, 0, rack);
   const tg = new THREE.TorusGeometry(0.85, 0.34, 8, 18);
   for (let r = 0; r < 2; r++) for (let k = 0; k < 4; k++) { const t = new THREE.Mesh(tg, M(0x15161a)); t.rotation.y = Math.PI / 2; t.position.set(0.7, 0.75 + r * 2.4 + 0.1, -1.6 + k * 1.05); t.castShadow = true; rack.add(t); }
   g.add(rack);
-  // jack stands + hanging lamps
   for (const [x, z] of [[8, 6], [10, -3]]) { const js = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.6, 4), M(0xe63946)); js.position.set(x, 0.8, z); js.castShadow = true; g.add(js); }
   for (const x of [-8, 0, 8]) { box(5, 0.25, 0.6, new THREE.MeshBasicMaterial({ color: 0xfff6d8 }), x, H - 0.6, 0); }
-  const lamp = new THREE.PointLight(0xfff0d8, 110, 60, 1.6); lamp.position.set(0, H - 3, 0); g.add(lamp);
+  const lampLight = new THREE.PointLight(0xfff0d8, 110, 60, 1.6); lampLight.position.set(0, H - 3, 0); g.add(lampLight);
   scene.add(g);
 }
 
 /* ================= CAR MODELS ================= */
-const PIV = 0.4; // the body rolls and pitches about this height
+const PIV = 0.4;
 const dark = M(0x15171c), darkDS = M(0x15171c, { side: THREE.DoubleSide });
 const glass = M(0x2a3a52, { roughness: 0.15, metalness: 0.3, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
 const silver = M(0xd6dbe4, { metalness: 0.7, roughness: 0.3 }), redCal = M(0xe3262e), spokeMat = M(0x2a2d36, { metalness: 0.4, roughness: 0.5 });
@@ -237,7 +222,6 @@ function toGeo(l) {
   g.setIndex(new THREE.BufferAttribute(l.index, 1));
   for (const q of l.groups) g.addGroup(q.start, q.count, q.mat);
   g.computeVertexNormals();
-  // side-projected UVs for the livery: both flanks map by (z, y), everything else samples a plain-paint corner
   const P = g.attributes.position, N = g.attributes.normal, uv = new Float32Array(P.count * 2);
   for (let i = 0; i < P.count; i++) {
     if (Math.abs(N.getX(i)) > 0.45) {
@@ -249,7 +233,6 @@ function toGeo(l) {
   return g;
 }
 
-// painted livery: base colour + stripes, sponsor-style decals, number roundel (all invented names)
 function liveryTex(def, hex) {
   const W = 1024, H = 256, c = document.createElement('canvas'); c.width = W; c.height = H;
   const g = c.getContext('2d'), base = new THREE.Color(hex), lum = base.r * 0.3 + base.g * 0.59 + base.b * 0.11;
@@ -257,23 +240,18 @@ function liveryTex(def, hex) {
   const dark = lum > 0.55 ? '#1b2250' : '#0e0f16', acc = lum > 0.55 ? '#e3262e' : (base.b > base.r + 0.15 ? '#e3262e' : '#1c2a6b');
   const X = z => (z + 2.7) / 5.4 * W, Y = y => (1 - y / 1.3) * H;
   g.fillStyle = '#' + base.getHexString(); g.fillRect(0, 0, W, H);
-  // rear-quarter swoosh with a wavy flame edge
   g.fillStyle = acc; g.beginPath(); g.moveTo(X(-2.7), Y(0.25)); g.lineTo(X(-2.7), Y(0.74));
   for (let i = 0; i <= 12; i++) { const z = -2.5 + i * 0.24; g.lineTo(X(z), Y(0.62 + 0.1 * Math.sin(i * 1.3 + seed) - i * 0.006)); }
   g.lineTo(X(0.75), Y(0.5)); g.lineTo(X(0.75), Y(0.25)); g.closePath(); g.fill();
   g.strokeStyle = '#fff'; g.lineWidth = 3; g.beginPath(); for (let i = 0; i <= 12; i++) { const z = -2.5 + i * 0.24, y = Y(0.66 + 0.1 * Math.sin(i * 1.3 + seed) - i * 0.006); i ? g.lineTo(X(z), y) : g.moveTo(X(z), y); } g.stroke();
-  // rocker stripe + door shut lines
   g.fillStyle = dark; g.fillRect(X(-2.6), Y(0.34), X(2.6) - X(-2.6), 12);
   g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(X(0.55), Y(0.74), 2, Y(0.36) - Y(0.74)); g.fillRect(X(-0.55), Y(0.74), 2, Y(0.36) - Y(0.74));
-  // grey scribble panel on the front wing
   g.fillStyle = '#9aa1ab'; g.fillRect(X(0.95), Y(0.7), X(1.95) - X(0.95), Y(0.38) - Y(0.7));
   g.strokeStyle = '#2a2c34'; g.lineWidth = 1.5; for (let i = 0; i < 6; i++) { g.beginPath(); g.moveTo(X(1.0), Y(0.66) + i * 9); for (let k = 0; k < 8; k++) g.lineTo(X(1.0) + k * 14, Y(0.66) + i * 9 + (k % 2 ? 3 : -3)); g.stroke(); }
-  // sponsor-style text
   const text = (t, x, y, size, fill, stroke) => { g.font = `${size}px "Russo One","Arial Black",Impact,sans-serif`; g.lineJoin = 'round'; g.lineWidth = 5; g.strokeStyle = stroke; g.strokeText(t, x, y); g.fillStyle = fill; g.fillText(t, x, y); };
   g.save(); g.transform(1, 0, -0.2, 1, 0, 0);
   text('NEXT LEVEL', X(-2.05) + 30, Y(0.5) + 6, 30, '#fff', dark); text('TURBO KING', X(-0.5), Y(0.48), 24, '#fff', '#0b0820'); text('DRIFT RUN', X(1.05) + 22, Y(0.5) + 12, 22, '#ffd23f', '#0b0820');
   g.restore();
-  // checker patch + number roundel + sakura stickers
   for (let r = 0; r < 3; r++) for (let k = 0; k < 8; k++) { g.fillStyle = (r + k) % 2 ? '#fff' : '#111'; g.fillRect(X(-1.0) + k * 9, Y(0.7) + r * 9, 9, 9); }
   g.fillStyle = '#fff'; g.beginPath(); g.arc(X(0.62) - 4, Y(0.58) + 5, 20, 0, 7); g.fill(); g.lineWidth = 3; g.strokeStyle = '#0b0820'; g.stroke();
   text(String(10 + seed % 80), X(0.62) - 18, Y(0.58) + 17, 30, '#0b0820', '#fff');
@@ -294,13 +272,11 @@ function buildModel(def, paintHex) {
   const rows = def.rows, nose = rows[0], tl = rows[rows.length - 1], nr = nose.slice(1), tr = tl.slice(1);
   const nz = nose[0], tz = tl[0];
 
-  // shell + greenhouse (lofted from symmetric cross-sections)
   put(toGeo(bodyLoft(def)), [paint, darkDS], 0, 0, 0);
   put(toGeo(cabinLoft(def)), [glass, paint], 0, 0, 0);
 
-  // lights, grille and bumper lips, all placed from the same half-profile so both sides match
   const lights = (row, z, mat, frac) => {
-    const y = nr[0] + 0, y0 = row[0], yt = row[4], yy = y0 + (yt - y0) * frac, hh = Math.min(0.13, Math.max(0.07, (yt - y0) * 0.3));
+    const y0 = row[0], yt = row[4], yy = y0 + (yt - y0) * frac, hh = Math.min(0.13, Math.max(0.07, (yt - y0) * 0.3));
     const hw = halfWidthAt(row, yy + hh / 2);
     for (const sx of [1, -1]) box(hw * 0.55, hh, 0.05, mat, sx * hw * 0.55, yy, z);
     return hw;
@@ -316,7 +292,6 @@ function buildModel(def, paintHex) {
   if (def.scoop) { const s = def.scoop; box(s.w, s.h, s.l, dark, 0, sampleBody(rows, s.z)[4] + s.h / 2 - 0.01, s.z); }
   if (def.vents) { const v = def.vents, hw = halfWidthAt(sampleBody(rows, v.z), v.y); for (const sx of [1, -1]) box(0.05, v.h, v.l, dark, sx * hw, v.y, v.z); }
 
-  // mirrors + B pillars
   const c0 = sampleCab(def, def.cab[0][0] - 0.12);
   for (const sx of [1, -1]) box(0.12, 0.08, 0.14, solid, sx * (c0.wb + 0.07), c0.yb + 0.17, def.cab[0][0] - 0.1);
   const bp = sampleCab(def, def.bpillar), bh = bp.yr - bp.yb;
@@ -325,7 +300,6 @@ function buildModel(def, paintHex) {
     p.rotation.z = sx * Math.atan((bp.wb - bp.wr) / bh);
   }
 
-  // roll cage + driver, visible through the tinted glass
   {
     const cage = M(0x16181f), up = new THREE.Vector3(0, 1, 0);
     const bar = (a, b, r = 0.022) => {
@@ -347,7 +321,6 @@ function buildModel(def, paintHex) {
     const wheelS = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.02, 6, 14), cage); wheelS.position.set(-0.32, cf.yb + 0.52, zs + 0.3); wheelS.rotation.x = 1.0; body.add(wheelS);
   }
 
-  // rear wing (angle follows the tune) + front splitter (length follows the tune)
   const ws = def.wingSpec, wing = new THREE.Group(), plane = new THREE.Group();
   wing.position.set(0, sampleBody(rows, ws.z)[4] - 0.01, ws.z); body.add(wing);
   plane.position.y = ws.h; wing.add(plane);
@@ -358,7 +331,6 @@ function buildModel(def, paintHex) {
   box(ws.hw * 2, 0.035, ws.chord, dark, 0, 0, 0, plane);
   const splitter = put(new THREE.BoxGeometry(nr[1] * 2 + 0.1, 0.03, 1), dark, 0, nr[0] - 0.02, nz);
 
-  // wheels live on the root (not the body) so the body can move relative to them
   const lay = wheelLayout(def), wheels = [];
   for (const axle of ['front', 'rear']) {
     const L = lay[axle];
@@ -417,7 +389,7 @@ const PAINTS = [0xf2f2f2, 0xff4d6d, 0xffb703, 0x2f7dff, 0x6df0c2, 0x9b5de5, 0xff
 
 let carDef = CAR_DEFS[save.car], tune = tuneOf(save.car), tier = save.tier, stats = derive(TIERS[tier], carDef, tune);
 const S = { x: 0, z: -95, h: Math.PI / 2, vx: 0, vz: 0, steer: 0, loose: 0, rpm: 0.25, sp: 0, slip: 0, thr: 0, vf: 0, hb: false };
-const SUS = { pitch: 0, pv: 0, roll: 0, rv: 0, heave: 0, hv: 0 }; // body spring-damper state
+const SUS = { pitch: 0, pv: 0, roll: 0, rv: 0, heave: 0, hv: 0 };
 let camH = S.h, shake = 0, crashCd = 0, slowT = 0, ran = false;
 let pending = 0, total = 0, driftT = 0, gap = 0, mult = 1;
 let boost = 1, wet = false, camMode = 0, photo = false, orbit = 0, zonesCleared = 0;
@@ -437,7 +409,6 @@ function hudCar() {
 function recalc() { stats = derive(TIERS[tier], carDef, tune); hudCar(); }
 function equip(id) { save.car = id; carDef = CAR_DEFS[id]; tune = tuneOf(id); setModel(carDef, paintOf(id), tune); recalc(); persist(); }
 function showEquipped() { if (!model || model.def !== carDef) setModel(carDef, paintOf(carDef.id), tune); }
-// keys 1 / 2 / 3: only the speed + handling class changes. The car model stays exactly as it is.
 function setTier(i) {
   tier = i; save.tier = i; recalc(); persist();
   toast(`SPEED CLASS ${i + 1}  ${Math.round(stats.top * 3.6)} km/h`);
@@ -452,7 +423,7 @@ function syncHud() {
   const c = document.body.classList; c.toggle('inmenu', !!menu); c.toggle('playing', !menu); c.toggle('photo', !!photo && !menu);
 }
 
-/* ================= SUSPENSION (spring-damper body motion) ================= */
+/* ================= SUSPENSION ================= */
 function suspension(dt) {
   const b = stats.bounce; let thr = 0, brk = 0, rollT = 0;
   if (menu) { /* settle */ }
@@ -460,7 +431,7 @@ function suspension(dt) {
     const inp = inSteer(); thr = inGas(); brk = inBrake();
     rollT = inp * 0.09 * b.rollAmp; S.steer += (inp - S.steer) * Math.min(1, dt * 8);
   } else { thr = S.thr; brk = inBrake(); rollT = clamp((S.yaw || 0) * S.sp * 0.004, -0.12, 0.12) * b.rollAmp; }
-  const pitchT = ((brk ? 0.04 : 0) - (thr ? 0.03 : 0)) * b.pitchAmp; // brake = nose dives, gas = tail squats
+  const pitchT = ((brk ? 0.04 : 0) - (thr ? 0.03 : 0)) * b.pitchAmp;
   const n = Math.max(1, Math.ceil(dt / 0.008)), h = dt / n, w = b.w, z = b.z, wr = w * 1.15, wh = w * 1.1;
   for (let i = 0; i < n; i++) {
     SUS.pv += (w * w * (pitchT - SUS.pitch) - 2 * z * w * SUS.pv) * h; SUS.pitch += SUS.pv * h;
@@ -470,8 +441,9 @@ function suspension(dt) {
   SUS.pitch = clamp(SUS.pitch, -0.25, 0.25); SUS.roll = clamp(SUS.roll, -0.3, 0.3); SUS.heave = clamp(SUS.heave, -0.15, 0.15);
 }
 
-/* ================= MENUS ================= */
-const menuEl = $('menu'), mLeft = $('mLeft'), mRight = $('mRight');
+/* ================= MENU ================= */
+const menuEl = $('menu'), mLeft = $('mLeft'), mRight = $('mRight'), mFoot = $('mFoot');
+
 const h = (tag, props = {}, ...kids) => {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) {
@@ -482,27 +454,55 @@ const h = (tag, props = {}, ...kids) => {
   for (const c of kids.flat()) if (c != null && c !== false) el.append(c.nodeType ? c : document.createTextNode(c));
   return el;
 };
-const btn = (label, fn, cls = '') => h('button', { class: 'btn ' + cls, type: 'button', onclick: fn }, label);
 const hex6 = c => '#' + c.toString(16).padStart(6, '0');
-function keepScroll(fn) { const old = mLeft.querySelector('.mscroll'), st = old ? old.scrollTop : 0; fn(); const nu = mLeft.querySelector('.mscroll'); if (nu) nu.scrollTop = st; }
+function keepScroll(fn) { const old = mLeft.querySelector('.mscroll'); const st = old ? old.scrollTop : mLeft.scrollTop; fn(); mLeft.scrollTop = st; }
 
-function sfx(kind) { // cartoon blips for buttons
+/* big italic racing button */
+const gbtn = (icon, label, sub, fn, cls = '') => h('button', {
+  class: 'gbtn ' + cls, type: 'button', onclick: fn
+},
+  h('span', { class: 'ic' }, icon),
+  h('span', { class: 'tx' }, h('span', {}, label), sub ? h('small', {}, sub) : null));
+const sbtn = (label, fn, cls = '') => h('button', { class: 'gbtn sm ' + cls, type: 'button', onclick: fn }, h('span', { class: 'tx' }, h('span', {}, label)));
+
+/* screen header block */
+const mHead = (title, sub) => h('header', {},
+  h('h1', { class: 'm-title' }, title),
+  sub ? h('p', { class: 'm-sub' }, sub) : null);
+const mSec = (title, ...kids) => h('section', { class: 'm-sec' }, title ? h('h3', {}, title) : null, ...kids);
+const footSet = (...kids) => mFoot.replaceChildren(...kids.filter(Boolean));
+const clearFoot = () => mFoot.replaceChildren();
+
+/* footer status element */
+const mStatus = (text) => h('div', { class: 'm-status', role: 'status' }, text);
+
+function sfx(kind) {
   if (!audio || save.set.mute) return;
-  const c = audio.ctx, t = c.currentTime, o = c.createOscillator(), g = c.createGain(), f = { click: 520, pop: 700, back: 380, pickup: 980, hit: 150, score: 780 }[kind] || 520;
+  const c = audio.ctx, t = c.currentTime, o = c.createOscillator(), g = c.createGain();
+  const f = { click: 520, pop: 700, back: 380, pickup: 980, hit: 150, score: 780, grow: 1150 }[kind] || 520;
   o.type = kind === 'hit' ? 'square' : 'triangle'; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 1.6, t + 0.08);
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
   o.connect(g); g.connect(audio.master); o.start(t); o.stop(t + 0.17);
 }
-addEventListener('click', e => { const b = e.target.closest && e.target.closest('button'); if (b) sfx(b.classList.contains('cls') ? 'pop' : b.textContent.trim() === 'Back' ? 'back' : 'click'); });
+addEventListener('click', e => { const b = e.target.closest && e.target.closest('button'); if (b) sfx(b.classList.contains('cls') ? 'pop' : b.textContent.trim().toLowerCase().startsWith('back') ? 'back' : 'click'); });
+
+function updateMenuTopBar() {
+  $('mCash').textContent = '$' + save.cash.toLocaleString();
+  $('mBest').textContent = best.toLocaleString();
+}
+
 function openMenu(screen) {
   menu = screen; for (const k in keys) keys[k] = false; releaseTouch();
-  menuEl.classList.remove('off'); syncHud();
+  menuEl.classList.remove('off'); syncHud(); updateMenuTopBar();
   if (screen === 'shop') { shopSel = save.car; shopMsg = ''; setModel(CAR_DEFS[shopSel], paintOf(shopSel), tuneOf(shopSel)); }
   else showEquipped();
   renderMenu();
-  if (!touchUI) requestAnimationFrame(() => { const f = mLeft.querySelector('.btn.primary') || mLeft.querySelector('button'); if (f) f.focus({ preventScroll: true }); });
+  if (!touchUI) requestAnimationFrame(() => { const f = mLeft.querySelector('.gbtn.primary') || mLeft.querySelector('button'); if (f) f.focus({ preventScroll: true }); });
 }
-function closeMenu() { showEquipped(); menu = null; if (!mp) ran = true; if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); menuEl.classList.add('off'); syncHud(); initAudio();
+function closeMenu() {
+  showEquipped(); menu = null; if (!mp) ran = true;
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  menuEl.classList.add('off'); syncHud(); initAudio();
   if (touchUI) {
     try { const l = screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'); if (l && l.catch) l.catch(() => {}); } catch {}
     if (save.set.ctrl === 'tilt') { enableTilt(); recenter(); }
@@ -519,21 +519,44 @@ function toggleMenu() {
   else if (menu === 'home') closeMenu();
   else openMenu('home');
 }
-function renderMenu() { garageUpdate(); if (menu === 'home') renderHome(); else if (menu === 'shop') renderShop(); else if (menu === 'edit') renderEdit(); else if (menu === 'settings') renderSettings();
-  else if (menu === 'maps') renderMaps(); else if (menu === 'modes') renderModes(); else if (menu === 'mpsetup') renderMpSetup(); else if (menu === 'pause') renderPause(); else if (menu === 'mpend') renderMpEnd(); }
+function renderMenu() {
+  updateMenuTopBar();
+  mLeft.className = 'm-main';
+  mRight.replaceChildren();
+  clearFoot();
+  if (menu === 'home') renderHome();
+  else if (menu === 'shop') renderShop();
+  else if (menu === 'edit') renderEdit();
+  else if (menu === 'settings') renderSettings();
+  else if (menu === 'maps') renderMaps();
+  else if (menu === 'modes') renderModes();
+  else if (menu === 'mpsetup') renderMpSetup();
+  else if (menu === 'pause') renderPause();
+  else if (menu === 'mpend') renderMpEnd();
+}
 
+/* ------------- HOME ------------- */
 function renderHome() {
   wheelEl = null;
-  mLeft.className = 'panel mpanel compact';
   mLeft.replaceChildren(
-    h('div', { class: 'mhead' }, h('h1', { class: 'mtitle' }, 'Drift Run'), h('p', { class: 'msub' }, 'Hold gas, turn in, tap the handbrake. Chain slides to build your multiplier.')),
-    h('div', { class: 'mbtns' }, ran ? btn('Resume', closeMenu, 'big blue') : null, btn('Shop', () => openMenu('shop'), 'big'), btn('Edit car', () => openMenu('edit'), 'big'), btn('Settings', () => openMenu('settings'), 'big blue')),
-    h('div', { class: 'mfoot col' },
-      h('div', {}, `${carDef.name} · speed class ${tier + 1} (${TIERS[tier].name})`),
-      h('div', {}, `Cash $${save.cash} · Best ${best}`),
-      h('div', { class: 'dim' }, 'Esc or the cog opens and closes this menu')));
-  mRight.replaceChildren();
+    h('div', { class: 'm-screen' },
+      mHead(h('span', {}, 'DRIFT '), h('span', {}, 'RUN')),
+      h('p', { class: 'm-sub' }, 'Hold gas, turn in, tap the handbrake. Chain slides to build your multiplier.'),
+      h('div', { class: 'm-actions' },
+        gbtn('▶', 'Play', 'Sunset Arena · Solo drift', () => openMenu('maps'), 'primary'),
+        gbtn('🏪', 'Shop', 'Buy new cars with banked cash', () => openMenu('shop')),
+        gbtn('🔧', 'Garage', 'Tune, paint, and set stance', () => openMenu('edit')),
+        gbtn('👥', 'Multiplayer', 'Split-screen, 2 to 4 players', () => openMenu('mpsetup'), 'blue'),
+        gbtn('⚙', 'Settings', 'Input, camera, audio', () => openMenu('settings'), 'blue')
+      )
+    )
+  );
+  footSet(
+    mStatus(`${carDef.name} · class ${tier + 1} (${TIERS[tier].name}) · ${Math.round(stats.top * 3.6)} km/h`),
+    ran ? sbtn('↩ Resume', closeMenu, 'blue') : null
+  );
 }
+function renderHomeTitleFix() { /* no-op, kept for symmetry */ }
 
 const tog = (label, hint, get, set) => {
   const b = h('button', { class: 'tog' + (get() ? ' on' : ''), type: 'button', role: 'switch', 'aria-checked': String(!!get()), 'aria-label': label, onclick: () => {
@@ -553,26 +576,37 @@ function setPhoto(v) {
   photo = v; syncHud();
   if (v && touchUI) showTip('Tap left / right to bounce the suspension');
 }
+
+/* ------------- SETTINGS ------------- */
 function renderSettings() {
-  const rows = [];
+  const secs = [];
   if (touchUI) {
     wheelEl = h('div', { class: 'wheel', 'aria-hidden': 'true' });
     const status = h('div', { class: 'hint' }, '');
     const upd = () => { status.textContent = save.set.ctrl !== 'tilt' ? 'Steering with on-screen buttons.' : (tiltOn && tiltSeen) ? 'Tilt sensor working - turn your phone like a wheel.' : 'Tap "Tilt phone" to switch the sensor on.'; };
     upd();
-    rows.push(h('section', { class: 'grp' }, h('h3', {}, 'Phone steering'),
+    secs.push(mSec('Phone steering',
       segRow('Steering', 'Tilt: left half of the screen brakes, right half drives.', ['Tilt phone', 'Buttons'], () => (save.set.ctrl === 'tilt' ? 0 : 1), i => {
         save.set.ctrl = i === 0 ? 'tilt' : 'btn'; persist(); applyCtrl();
         if (i === 0) enableTilt().then(() => { recenter(); upd(); }); else upd();
       }),
       segRow('Tilt sensitivity', 'Soft = turn further for full lock.', ['Soft', 'Normal', 'Sharp'], () => save.set.sens, i => { save.set.sens = i; persist(); }),
       tog('Flip tilt direction', 'Turn this on if the car steers the wrong way.', () => save.set.flip, v => { save.set.flip = v; persist(); }),
-      h('div', { class: 'wheelrow' }, wheelEl, h('div', {}, h('div', { class: 'btnrow', style: 'margin-top:0' }, btn('Recenter wheel', () => { recenter(); upd(); }, 'blue')), status))));
+      h('div', { class: 'wheelrow', style: 'display:flex;align-items:center;gap:16px;margin-top:12px' },
+        wheelEl,
+        h('div', { style: 'flex:1' },
+          h('div', { class: 'row', style: 'display:flex;gap:8px' }, sbtn('↻ Recenter', () => { recenter(); upd(); }, 'blue')),
+          status))
+    ));
   } else {
-    rows.push(h('section', { class: 'grp' }, h('h3', {}, 'Keyboard'),
-      h('div', { class: 'keys' }, h('kbd', {}, 'W'), ' gas  ', h('kbd', {}, 'S'), ' brake  ', h('kbd', {}, 'A'), h('kbd', {}, 'D'), ' steer', h('br'),
-        h('kbd', {}, 'Space'), ' handbrake  ', h('kbd', {}, 'Shift'), ' boost  ', h('kbd', {}, 'E'), ' clutch kick', h('br'),
-        h('kbd', {}, '1'), h('kbd', {}, '2'), h('kbd', {}, '3'), ' speed class  ', h('kbd', {}, 'Esc'), ' menu')));
+    secs.push(mSec('Keyboard',
+      h('div', { class: 'ctl' },
+        h('div', { class: 'hint', style: 'line-height:2' },
+          'W / S  gas & brake   ·   A / D  steer', h('br'),
+          'Space  handbrake   ·   Shift  boost   ·   E  clutch kick', h('br'),
+          '1 / 2 / 3  speed class   ·   Esc  menu')
+      )
+    ));
   }
   const game = [
     segRow('Camera', null, ['Chase', 'Hood', 'Far'], () => camMode, i => { camMode = i; }),
@@ -582,138 +616,142 @@ function renderSettings() {
     tog('Sound', null, () => !save.set.mute, v => setMute(!v)),
   ];
   if (touchUI) game.push(tog('Vibration', 'Buzz on crashes.', () => save.set.vib, v => { save.set.vib = v; persist(); if (v) navigator.vibrate?.(30); }));
-  const acts = [btn('Reset car', () => { reset(); closeMenu(); }, 'blue')];
-  if (document.fullscreenEnabled) acts.push(btn('Fullscreen', () => { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {}); }, 'blue'));
-  rows.push(h('section', { class: 'grp' }, h('h3', {}, 'Game'), ...game, h('div', { class: 'btnrow' }, ...acts)));
-  mLeft.className = 'panel mpanel';
+  secs.push(mSec('Gameplay', ...game));
+
+  const acts = [sbtn('↻ Reset car', () => { reset(); closeMenu(); }, 'blue')];
+  if (document.fullscreenEnabled) acts.push(sbtn('⛶ Fullscreen', () => { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {}); }, 'blue'));
+  secs.push(mSec('Actions', h('div', { class: 'chips' }, ...acts)));
+
   mLeft.replaceChildren(
-    h('div', { class: 'mhead' }, h('h2', {}, 'Settings')),
-    h('div', { class: 'mscroll' }, ...rows),
-    h('div', { class: 'mfoot' }, btn('Back', () => openMenu('home'), 'primary')));
-  mRight.replaceChildren();
+    h('div', { class: 'm-screen' },
+      mHead('SETTINGS', 'Dial in the feel. Changes save automatically.'),
+      ...secs
+    )
+  );
+  footSet(mStatus(`${touchUI ? 'Touch input detected' : 'Keyboard + mouse'}`), sbtn('← Back', () => openMenu('home')));
 }
 
-/* ---- play flow: Play -> map -> mode -> multiplayer setup ---- */
+/* ------------- MAPS / MODES ------------- */
 const MAPS = [
   { name: 'Sunset Arena', desc: 'Asphalt bowl, tower island, tyre stacks.', open: true },
   { name: 'Neon Docks', desc: 'Harbour lanes under the cranes.', open: false },
   { name: 'Frost Peak', desc: 'Icy hairpins up the mountain.', open: false },
 ];
-const mpCfg = { mode: 'duel', n: 2, first: 3, cls: 1, cars: [save.car, 'corsa', 'muscle', 'rallye'], ...(save.mp || {}) };
-mpCfg.cars = mpCfg.cars.map(id => (CAR_DEFS[id] ? id : 'hachi'));
-const saveMp = () => { save.mp = { ...mpCfg }; persist(); };
-const padList = () => (navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : []);
-
 function renderMaps() {
   const cards = MAPS.map((mapDef, i) => {
     const locked = !mapDef.open;
-    return h('button', { class: 'map' + (locked ? ' locked' : ''), type: 'button', 'aria-disabled': locked ? 'true' : null, onclick: e => {
-      if (locked) { const el = e.currentTarget; el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); sfx('back'); } else openMenu('modes');
-    } },
-      h('span', { class: 'mthumb t' + (i + 1) }, locked ? h('i', {}, '🔒') : null),
-      h('span', { class: 'minfo' }, h('b', {}, mapDef.name), h('span', {}, mapDef.desc)),
-      locked ? h('span', { class: 'sign' }, 'COMING SOON') : h('span', { class: 'ctag' }, 'PLAY ▶'));
+    return h('button', {
+      class: 'map-card' + (locked ? ' locked' : ''), type: 'button',
+      'aria-disabled': locked ? 'true' : null,
+      onclick: e => {
+        if (locked) { const el = e.currentTarget; el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); sfx('back'); }
+        else openMenu('modes');
+      }
+    },
+      h('span', { class: 'm-thumb t' + (i + 1) }, locked ? '🔒' : '🏁'),
+      h('span', { class: 'm-info' }, h('b', {}, mapDef.name), h('span', {}, mapDef.desc)),
+      h('span', { class: 'm-go' }, locked ? 'COMING SOON' : 'SELECT ▶')
+    );
   });
-  mLeft.className = 'panel mpanel';
   mLeft.replaceChildren(
-    h('div', { class: 'mhead' }, h('h2', {}, 'Pick a map')),
-    h('div', { class: 'mscroll' }, ...cards),
-    h('div', { class: 'mfoot' }, btn('Back', () => openMenu('home'))));
-  mRight.replaceChildren();
+    h('div', { class: 'm-screen' },
+      mHead('PICK A MAP'),
+      h('p', { class: 'm-sub' }, 'Each map has its own flow, obstacles, and shortcuts.'),
+      h('div', { class: 'm-list' }, ...cards)
+    )
+  );
+  footSet(mStatus('More maps coming in future updates.'), sbtn('← Back', () => openMenu('home')));
 }
 function renderModes() {
-  mLeft.className = 'panel mpanel compact';
   mLeft.replaceChildren(
-    h('div', { class: 'mhead' }, h('h2', {}, 'Sunset Arena'), h('div', { class: 'dim' }, 'How do you want to play?')),
-    h('div', { class: 'mbtns' }, btn('🏁  Solo drift', () => closeMenu(), 'primary big'), btn('👥  Multiplayer', () => openMenu('mpsetup'), 'big blue')),
-    h('div', { class: 'mfoot col' }, h('div', { class: 'dim' }, 'Solo: score pads, combos, timed mode. Multiplayer: split-screen for up to 4 players.'), h('div', { class: 'row' }, btn('Back', () => openMenu('maps')))));
-  mRight.replaceChildren();
-}
-function renderMpSetup() {
-  const cfg = mpCfg, again = () => keepScroll(renderMpSetup);
-  const modes = [['duel', 'Side-Hit Duel', '💥', "Ram the SIDE of a rival's car to score. Head-ons and nudges don't count. First to the target wins."],
-    ['snake', 'Orb Snake', '🟢', "Grab orbs to grow a tail of car copies. Hit someone else's tail and you're out. Last car rolling wins the round."]]
-    .map(([id, name, icon, desc]) => h('button', { class: 'card' + (cfg.mode === id ? ' sel' : ''), type: 'button', onclick: () => { cfg.mode = id; cfg.first = id === 'duel' ? 3 : 2; saveMp(); again(); } },
-      h('span', { class: 'cname' }, name), h('span', { class: 'ctag' }, icon), h('span', { class: 'cdesc' }, desc)));
-  const carBtn = (i, d) => h('button', { class: 'chip', type: 'button', 'aria-label': `${PNAMES[i]} ${d < 0 ? 'previous' : 'next'} car`, onclick: () => {
-    const k = CAR_ORDER.indexOf(cfg.cars[i]); cfg.cars[i] = CAR_ORDER[(k + d + CAR_ORDER.length) % CAR_ORDER.length]; saveMp(); again();
-  } }, d < 0 ? '◀' : '▶');
-  const pads = padList().length;
-  const players = Array.from({ length: cfg.n }, (_, i) => h('div', { class: 'prow' },
-    h('i', { class: 'pdot', style: 'background:' + hex6(PCOLORS[i]) }), h('b', {}, PNAMES[i]), carBtn(i, -1), h('span', { class: 'pcar' }, CAR_DEFS[cfg.cars[i]].name), carBtn(i, 1),
-    h('span', { class: 'pkeys' }, KEYMAPS[i].name + (pads > i ? '  ·  🎮 pad' : ''))));
-  mLeft.className = 'panel mpanel';
-  mLeft.replaceChildren(
-    h('div', { class: 'mhead' }, h('h2', {}, 'Multiplayer')),
-    h('div', { class: 'mscroll' },
-      h('section', { class: 'grp' }, h('h3', {}, 'Game mode'), ...modes),
-      h('section', { class: 'grp' }, h('h3', {}, 'Match'),
-        segRow('Players', 'Split-screen on one device.', ['2', '3', '4'], () => cfg.n - 2, i => { cfg.n = i + 2; saveMp(); again(); }),
-        segRow('First to', 'Rounds needed to win.', ['1', '2', '3'], () => cfg.first - 1, i => { cfg.first = i + 1; saveMp(); }),
-        segRow('Speed class', 'Same stats for everybody, so it stays fair.', TIERS.map((t, i) => `${i + 1} · ${t.name}`), () => cfg.cls, i => { cfg.cls = i; saveMp(); })),
-      h('section', { class: 'grp' }, h('h3', {}, 'Players'), ...players,
-        h('div', { class: 'hint', style: 'margin-top:10px' }, touchUI ? 'On a phone, P1 uses the touchscreen. Connect Bluetooth gamepads for the others.' : 'Share the keyboard, or plug in gamepads (stick steers, triggers drive, A = handbrake).'))),
-    h('div', { class: 'mfoot' }, btn('Start!', startMP, 'primary'), btn('Back', () => openMenu('modes'))));
-  mRight.replaceChildren();
-}
-function renderPause() {
-  mLeft.className = 'panel mpanel compact';
-  mLeft.replaceChildren(
-    h('div', { class: 'mhead' }, h('h1', { class: 'mtitle' }, 'Paused')),
-    h('div', { class: 'mbtns' }, btn('Resume', closeMenu, 'primary big'), btn('Restart match', startMP, 'big'),
-      btn(save.set.mute ? 'Sound: off' : 'Sound: on', () => { setMute(!save.set.mute); renderPause(); }, 'big blue'), btn('Quit to menu', quitMP, 'big')),
-    h('div', { class: 'mfoot col' }, h('div', { class: 'dim' }, 'Esc to resume')));
-  mRight.replaceChildren();
-}
-function renderMpEnd() {
-  const w = mp ? mp.m.winner : 0, sc = mp ? mp.m.scores : [];
-  mLeft.className = 'panel mpanel compact';
-  mLeft.replaceChildren(
-    h('div', { class: 'mhead' }, h('h1', { class: 'mtitle', style: 'color:' + hex6(PCOLORS[w]) }, PNAMES[w] + ' wins!'),
-      h('p', { class: 'msub' }, sc.map((v, i) => `${PNAMES[i]} ${v}`).join('  ·  '))),
-    h('div', { class: 'mbtns' }, btn('Rematch', startMP, 'primary big'), btn('Quit to menu', quitMP, 'big')));
-  mRight.replaceChildren();
+    h('div', { class: 'm-screen' },
+      mHead('SUNSET ', h('span', {}, 'ARENA')),
+      h('p', { class: 'm-sub' }, 'How do you want to drive?'),
+      h('div', { class: 'm-actions' },
+        gbtn('🏁', 'Solo drift', 'Score pads, combos, ghost races', () => closeMenu(), 'primary'),
+        gbtn('👥', 'Multiplayer', 'Split-screen, 2 to 4 players', () => openMenu('mpsetup'), 'blue')
+      )
+    )
+  );
+  footSet(mStatus(`Class ${tier + 1} · ${TIERS[tier].name} · ${Math.round(stats.top * 3.6)} km/h`), sbtn('← Back', () => openMenu('maps')));
 }
 
+/* ------------- SHOP ------------- */
 let shopSel = null, shopMsg = '';
 function renderShop() {
   const sel = CAR_DEFS[shopSel], owned = save.owned.includes(sel.id);
   const cards = CAR_ORDER.map(id => {
     const d = CAR_DEFS[id], own = save.owned.includes(id);
-    return h('button', { class: 'card' + (id === shopSel ? ' sel' : ''), type: 'button', onclick: () => { shopSel = id; shopMsg = ''; setModel(d, paintOf(id), tuneOf(id)); keepScroll(renderShop); } },
-      h('span', { class: 'cname' }, d.name), h('span', { class: 'ctag' }, own ? (id === save.car ? 'Equipped' : 'Owned') : '$' + d.price), h('span', { class: 'cdesc' }, d.tag));
+    const equipped = id === save.car;
+    const status = equipped ? '● Equipped' : own ? '✓ Owned' : '$' + d.price.toLocaleString();
+    return h('button', {
+      class: 'card' + (id === shopSel ? ' sel' : ''), type: 'button',
+      onclick: () => { shopSel = id; shopMsg = ''; setModel(d, paintOf(id), tuneOf(id)); keepScroll(renderShop); }
+    },
+      h('span', { class: 'cname' }, d.name),
+      h('span', { class: 'ctag' }, status),
+      h('span', { class: 'cdesc' }, d.tag)
+    );
   });
-  const act = owned
-    ? (sel.id === save.car ? btn('Equipped', () => {}, 'primary dis') : btn('Equip', () => { equip(sel.id); shopMsg = ''; keepScroll(renderShop); }, 'primary'))
-    : btn('Buy  $' + sel.price, () => buy(sel.id), 'primary');
-  mLeft.className = 'panel mpanel';
   mLeft.replaceChildren(
-    h('div', { class: 'mhead row' }, h('h2', {}, 'Shop'), h('div', { class: 'cash' }, '$' + save.cash)),
-    h('div', { class: 'mscroll' }, ...cards),
-    h('div', { class: 'mfoot col' }, h('div', { class: 'note', role: 'status' }, shopMsg || 'Bank drift points to earn cash.'), h('div', { class: 'row' }, act, btn('Back', () => openMenu('home')))));
+    h('div', { class: 'm-screen' },
+      mHead('SHOP'),
+      h('p', { class: 'm-sub' }, 'Every car is available. Earn cash by banking drift points.'),
+      h('div', { class: 'm-list' }, ...cards)
+    )
+  );
   renderStats(sel, tuneOf(sel.id));
+  updateMenuTopBar();
+
+  const act = owned
+    ? (sel.id === save.car ? sbtn('● Equipped', () => {}, 'dis') : sbtn('▶ Equip', () => { equip(sel.id); shopMsg = ''; keepScroll(renderShop); }, 'primary'))
+    : sbtn(`Buy · $${sel.price.toLocaleString()}`, () => buy(sel.id), 'primary');
+  const sell = owned && sel.price > 0 ? sbtn(`Sell · $${Math.floor(sel.price * 0.5).toLocaleString()}`, () => sellCar(sel.id), 'red') : null;
+  footSet(
+    mStatus(shopMsg || (owned ? (sel.id === save.car ? 'Currently equipped.' : 'Owned — equip or sell.') : `Price $${sel.price.toLocaleString()}`)),
+    sell,
+    act,
+    sbtn('← Back', () => openMenu('home'))
+  );
 }
 function buy(id) {
   const d = CAR_DEFS[id];
-  if (save.cash < d.price) shopMsg = `Need $${d.price - save.cash} more.`;
+  if (save.cash < d.price) shopMsg = `Need $${(d.price - save.cash).toLocaleString()} more.`;
   else { save.cash -= d.price; save.owned.push(id); equip(id); shopMsg = d.name + ' is yours!'; }
   keepScroll(renderShop);
+  updateMenuTopBar();
+}
+function sellCar(id) {
+  const d = CAR_DEFS[id]; if (!save.owned.includes(id) || d.price <= 0) return;
+  const price = Math.floor(d.price * 0.5);
+  save.cash += price; save.owned = save.owned.filter(x => x !== id); delete save.tune[id];
+  if (save.car === id) equip('hachi');
+  shopSel = 'hachi'; setModel(CAR_DEFS.hachi, paintOf('hachi'), tuneOf('hachi'));
+  shopMsg = `${d.name} sold for $${price.toLocaleString()}.`;
+  persist(); keepScroll(renderShop); updateMenuTopBar();
 }
 
+/* ------------- STATS SIDE PANEL ------------- */
 function renderStats(def, t) {
   const s = derive(TIERS[tier], def, t), st = derive(TIERS[tier], def, defaultTune(def));
   const rows = Object.entries(s.ratings).map(([k, v]) => {
     const d = Math.round((v - st.ratings[k]) * 100);
     return h('div', { class: 'stat' },
-      h('div', { class: 'slab' }, h('span', {}, k), h('span', { class: 'delta ' + (d > 0 ? 'up' : d < 0 ? 'dn' : '') }, d === 0 ? '' : (d > 0 ? '+' : '−') + Math.abs(d))),
+      h('div', { class: 'slab' },
+        h('span', {}, k),
+        h('span', { class: 'delta ' + (d > 0 ? 'up' : d < 0 ? 'dn' : '') }, d === 0 ? '' : (d > 0 ? '+' : '−') + Math.abs(d))),
       h('div', { class: 'bar' }, h('i', { style: `width:${Math.round(v * 100)}%` })));
   });
-  mRight.replaceChildren(h('h3', {}, 'Performance'), h('div', { class: 'dim' }, `Speed class ${tier + 1} · ${TIERS[tier].name}`), ...rows,
+  mRight.replaceChildren(
+    h('h3', {}, def.name),
+    h('div', { class: 'dim' }, `Class ${tier + 1} · ${TIERS[tier].name}`),
+    ...rows,
     h('div', { class: 'bal' }, 'Balance: ', h('b', {}, s.balance)),
-    h('div', { class: 'dim' }, `${Math.round(s.top * 3.6)} km/h top speed`),
-    h('div', { class: 'dim' }, 'Drag to orbit · scroll to zoom'));
+    h('div', { class: 'dim', style: 'margin-top:6px' }, `${Math.round(s.top * 3.6)} km/h top speed`)
+  );
 }
 
+/* ------------- EDIT CAR ------------- */
 const fmt = (it, v) => (v > 0 && it.min < 0 ? '+' : '') + v.toFixed(it.step < 0.1 ? 2 : it.step < 1 ? 1 : 0) + it.unit;
 function setTune(key, v) {
   tune[key] = v; save.tune[carDef.id] = { ...tune }; persist();
@@ -740,16 +778,130 @@ function renderEdit() {
   const presets = h('div', { class: 'chips' }, ...Object.keys(PRESETS).map(name => h('button', { class: 'chip', type: 'button', onclick: () => {
     tune = { ...defaultTune(carDef), ...PRESETS[name]() }; save.tune[carDef.id] = { ...tune }; persist(); applyModel(tune); recalc(); SUS.hv -= 0.2; keepScroll(renderEdit);
   } }, name)));
-  mLeft.className = 'panel mpanel';
+  const carChips = h('div', { class: 'chips' },
+    ...save.owned.map(id => h('button', { class: 'chip' + (id === save.car ? ' sel' : ''), type: 'button', onclick: () => { equip(id); renderEdit(); } }, CAR_DEFS[id].name)));
+
+  const secs = [
+    mSec('Car', carChips),
+    mSec('Paint', swatches),
+    mSec('Quick presets', presets),
+    ...TUNE_GROUPS.map(g => mSec(g.title, ...g.items.map(control))),
+  ];
+
   mLeft.replaceChildren(
-    h('div', { class: 'mhead' }, h('h2', {}, 'Edit car'),
-      h('div', { class: 'chips' }, ...save.owned.map(id => h('button', { class: 'chip' + (id === save.car ? ' sel' : ''), type: 'button', onclick: () => { equip(id); renderEdit(); } }, CAR_DEFS[id].name)))),
-    h('div', { class: 'mscroll' },
-      h('section', { class: 'grp' }, h('h3', {}, 'Paint'), swatches),
-      h('section', { class: 'grp' }, h('h3', {}, 'Presets'), presets),
-      ...TUNE_GROUPS.map(g => h('section', { class: 'grp' }, h('h3', {}, g.title), ...g.items.map(control)))),
-    h('div', { class: 'mfoot' }, btn('Reset to stock', () => { tune = defaultTune(carDef); save.tune[carDef.id] = { ...tune }; persist(); applyModel(tune); recalc(); keepScroll(renderEdit); }), btn('Back', () => openMenu('home'), 'primary')));
+    h('div', { class: 'm-screen' },
+      mHead('GARAGE'),
+      h('p', { class: 'm-sub' }, 'Tune the setup and paint the livery. Everything is measured against the stock tune, so a clean car is a fair baseline.'),
+      ...secs
+    )
+  );
   renderStats(carDef, tune);
+  footSet(
+    mStatus(`${carDef.name} · ${save.owned.length} car${save.owned.length === 1 ? '' : 's'} owned`),
+    sbtn('↻ Stock', () => { tune = defaultTune(carDef); save.tune[carDef.id] = { ...tune }; persist(); applyModel(tune); recalc(); keepScroll(renderEdit); }, 'blue'),
+    sbtn('← Back', () => openMenu('home'))
+  );
+}
+
+/* ------------- MULTIPLAYER SETUP ------------- */
+const mpCfg = { mode: 'duel', n: 2, first: 3, cls: 1, cars: [save.car, 'corsa', 'muscle', 'rallye'], ...(save.mp || {}) };
+mpCfg.cars = mpCfg.cars.map(id => (CAR_DEFS[id] ? id : 'hachi'));
+const saveMp = () => { save.mp = { ...mpCfg }; persist(); };
+const padList = () => (navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : []);
+
+function renderMpSetup() {
+  const cfg = mpCfg, again = () => keepScroll(renderMpSetup);
+  const modes = [
+    ['duel', 'Side-Hit Duel', '💥', "Ram the SIDE of a rival's car to score. Head-ons and nudges don't count. First to the target wins."],
+    ['snake', 'Orb Snake', '🟢', "Grab orbs to grow a tail of car copies. Hit someone else's tail and you're out. Last car rolling wins the round."]
+  ].map(([id, name, icon, desc]) => h('button', {
+    class: 'card' + (cfg.mode === id ? ' sel' : ''), type: 'button',
+    onclick: () => { cfg.mode = id; cfg.first = id === 'duel' ? 3 : 2; saveMp(); again(); }
+  },
+    h('span', { class: 'cname' }, icon + '  ' + name),
+    h('span', { class: 'ctag' }, cfg.mode === id ? '● Selected' : 'Choose'),
+    h('span', { class: 'cdesc' }, desc)));
+
+  const carBtn = (i, d) => h('button', {
+    class: 'gbtn sm', type: 'button',
+    style: 'padding:6px 10px;min-width:36px;justify-content:center',
+    'aria-label': `${PNAMES[i]} ${d < 0 ? 'previous' : 'next'} car`,
+    onclick: () => {
+      const k = CAR_ORDER.indexOf(cfg.cars[i]);
+      cfg.cars[i] = CAR_ORDER[(k + d + CAR_ORDER.length) % CAR_ORDER.length];
+      saveMp(); again();
+    }
+  }, h('span', { class: 'tx' }, h('span', {}, d < 0 ? '◀' : '▶')));
+
+  const pads = padList().length;
+  const players = Array.from({ length: cfg.n }, (_, i) => h('div', { class: 'prow' },
+    h('i', { class: 'pdot', style: 'background:' + hex6(PCOLORS[i]) }),
+    h('b', {}, PNAMES[i]),
+    carBtn(i, -1),
+    h('span', { class: 'pcar' }, CAR_DEFS[cfg.cars[i]].name),
+    carBtn(i, 1),
+    h('span', { class: 'pkeys' }, KEYMAPS[i].name + (pads > i ? '  ·  🎮 pad connected' : ''))
+  ));
+
+  const secs = [
+    mSec('Game mode', ...modes),
+    mSec('Match',
+      segRow('Players', 'Split-screen on one device.', ['2', '3', '4'], () => cfg.n - 2, i => { cfg.n = i + 2; saveMp(); again(); }),
+      segRow('First to', 'Rounds needed to win.', ['1', '2', '3'], () => cfg.first - 1, i => { cfg.first = i + 1; saveMp(); }),
+      segRow('Speed class', 'Same stats for everybody — it stays fair.', TIERS.map((t, i) => `${i + 1} · ${t.name}`), () => cfg.cls, i => { cfg.cls = i; saveMp(); })
+    ),
+    mSec('Players', ...players,
+      h('div', { class: 'hint', style: 'margin-top:10px;font-size:12px;opacity:.65;line-height:1.45' },
+        touchUI
+          ? 'On a phone, P1 uses the touchscreen. Connect Bluetooth gamepads for the others.'
+          : 'Share the keyboard, or plug in gamepads (stick steers, triggers drive, A = handbrake).'))
+  ];
+
+  mLeft.replaceChildren(
+    h('div', { class: 'm-screen' },
+      mHead('MULTIPLAYER'),
+      h('p', { class: 'm-sub' }, 'Split-screen for two to four players on one device.'),
+      ...secs
+    )
+  );
+  footSet(
+    mStatus(`${cfg.n} players · first to ${cfg.first} · class ${cfg.cls + 1}`),
+    sbtn('← Back', () => openMenu('modes')),
+    sbtn('Start ▶', startMP, 'primary')
+  );
+}
+
+/* ------------- PAUSE / MATCH END ------------- */
+function renderPause() {
+  mLeft.replaceChildren(
+    h('div', { class: 'm-overlay' },
+      h('div', { class: 'pause-card' },
+        h('h1', { class: 'm-title' }, 'PAUSED'),
+        h('p', { class: 'm-sub', style: 'text-align:left;max-width:none' }, 'Esc to resume.'),
+        h('div', { class: 'm-actions' },
+          gbtn('▶', 'Resume', null, closeMenu, 'primary'),
+          gbtn('↻', 'Restart match', null, startMP),
+          gbtn('🔊', save.set.mute ? 'Sound: off' : 'Sound: on', null, () => { setMute(!save.set.mute); renderPause(); }, 'blue'),
+          gbtn('✕', 'Quit to menu', null, quitMP, 'red')
+        )
+      )
+    )
+  );
+}
+function renderMpEnd() {
+  const w = mp ? mp.m.winner : 0, sc = mp ? mp.m.scores : [];
+  mLeft.replaceChildren(
+    h('div', { class: 'm-overlay' },
+      h('div', { class: 'pause-card' },
+        h('h1', { class: 'm-title', style: 'color:' + hex6(PCOLORS[w]) }, PNAMES[w] + ' WINS!'),
+        h('p', { class: 'm-sub', style: 'text-align:left;max-width:none' }, sc.map((v, i) => `${PNAMES[i]}  ${v}`).join('   ·   ')),
+        h('div', { class: 'm-actions' },
+          gbtn('↻', 'Rematch', null, startMP, 'primary'),
+          gbtn('✕', 'Quit to menu', null, quitMP, 'red')
+        )
+      )
+    )
+  );
 }
 
 /* ================= INPUT / AUDIO ================= */
@@ -758,16 +910,16 @@ const K = (...c) => c.some(x => keys[x]);
 addEventListener('keydown', e => {
   initAudio();
   if (e.code === 'Escape') { e.preventDefault(); if (!e.repeat) toggleMenu(); return; }
-  if (menu) { // arrow keys hop between buttons; sliders keep their own arrows
+  if (menu) {
     if ((e.code === 'ArrowDown' || e.code === 'ArrowUp') && document.activeElement && document.activeElement.tagName === 'BUTTON') {
       const list = [...mLeft.querySelectorAll('button')], i = list.indexOf(document.activeElement);
       if (i >= 0) { e.preventDefault(); list[(i + (e.code === 'ArrowDown' ? 1 : list.length - 1)) % list.length].focus(); }
     }
     return;
-  } // menus handle their own keys (Tab, arrows on sliders, Enter / Space on buttons)
+  }
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
   keys[e.code] = true;
-  if (mp) { if (e.code === 'KeyM') setMute(!save.set.mute); return; } // multiplayer keeps its own controls
+  if (mp) { if (e.code === 'KeyM') setMute(!save.set.mute); return; }
   if (e.code === 'KeyR') reset();
   if (e.code === 'KeyC') camMode = (camMode + 1) % 3;
   if (e.code === 'KeyP') setPhoto(!photo);
@@ -776,7 +928,6 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyE') kick();
   if (e.code === 'KeyM') setMute(!save.set.mute);
   if (e.code.startsWith('Digit') && TIERS[+e.code.slice(5) - 1]) setTier(+e.code.slice(5) - 1);
-  // photo mode: W / S rock the suspension
   if (photo && !e.repeat) {
     if (e.code === 'KeyW' || e.code === 'ArrowUp') photoBump('gas');
     if (e.code === 'KeyS' || e.code === 'ArrowDown') photoBump('brake');
@@ -788,64 +939,19 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
 });
-// menu camera: drag to orbit, scroll to zoom
-addEventListener('pointerdown', e => { initAudio(); if (menu && !e.target.closest('.mpanel,#gbar,#gPlay,#gSell,#gPick')) drag = { x: e.clientX, y: e.clientY }; });
+addEventListener('pointerdown', e => { initAudio(); if (menu && !e.target.closest('#mLeft, #mRight, #mTop, #mFoot')) drag = { x: e.clientX, y: e.clientY }; });
 addEventListener('pointermove', e => {
   if (!drag) return;
   orbit -= (e.clientX - drag.x) * 0.008; orbitPitch = clamp(orbitPitch + (e.clientY - drag.y) * 0.006, 0.02, 1.1);
   drag = { x: e.clientX, y: e.clientY };
 });
 addEventListener('pointerup', () => { drag = null; });
-addEventListener('wheel', e => { if (menu && !e.target.closest('.mpanel')) orbitDist = clamp(orbitDist + e.deltaY * 0.005, 4.5, 12); }, { passive: true });
+addEventListener('wheel', e => { if (menu && !e.target.closest('#mLeft, #mRight, #mTop, #mFoot')) orbitDist = clamp(orbitDist + e.deltaY * 0.005, 4.5, 12); }, { passive: true });
 
 const D2R_ = Math.PI / 180;
 
-/* ================= GARAGE FRAME (top bar, PLAY / SELL, car switcher) ================= */
-const SPECS = {
-  hachi:  { engine: 'Straight 4',        hp: 210, rpm: 7800, kg: 940 },
-  corsa:  { engine: 'Flat 6',            hp: 320, rpm: 8200, kg: 1180 },
-  muscle: { engine: 'V8',                hp: 480, rpm: 6800, kg: 1550 },
-  rallye: { engine: 'Straight 4 Turbo',  hp: 300, rpm: 7500, kg: 1280 },
-  apex:   { engine: 'Twin-turbo V6',     hp: 620, rpm: 8000, kg: 1400 },
-};
-const GARAGE_MENUS = ['home', 'shop', 'edit'];
-const sellPrice = id => Math.floor(CAR_DEFS[id].price * 0.5);
-function garageUpdate() {
-  const on = GARAGE_MENUS.includes(menu) && !mp, b = document.body.classList;
-  b.toggle('g-on', on); if (!on) { b.remove('g-sell'); return; }
-  const id = menu === 'shop' ? shopSel : save.car, d = CAR_DEFS[id], sp = SPECS[id] || SPECS.hachi, own = save.owned.includes(id);
-  const t = menu === 'shop' ? tuneOf(id) : tune, st = derive(TIERS[tier], d, t), s0 = derive(TIERS[tier], d, defaultTune(d));
-  const hp = Math.round(sp.hp * st.power / s0.power), kg = Math.round(sp.kg - (t.weight || 0));
-  $('gSlotT').textContent = `SLOT ${CAR_ORDER.indexOf(id) + 1}/${CAR_ORDER.length}`;
-  $('gCashT').textContent = '$' + save.cash; $('gBest').textContent = best;
-  $('gBack').classList.toggle('hide', menu === 'home');
-  $('gSpec').innerHTML = `Engine Type : ${sp.engine}<br>HP : ${hp}/${sp.hp}<br>Max RPM : ${sp.rpm}<br>Engine Lv : Fixed<br>Weight : ${kg}kg`;
-  $('gOwned').textContent = own ? (id === save.car ? 'Equipped' : 'Owned : You') : '$' + d.price;
-  const canSell = menu === 'shop' && own && d.price > 0;
-  b.toggle('g-sell', canSell); if (canSell) $('gSell').innerHTML = `Sell<br>$${sellPrice(id)}`;
-  $('gPlay').style.display = menu === 'shop' && !own ? 'none' : '';
-}
-function cycleCar(dir) {
-  if (menu === 'shop') {
-    const k = CAR_ORDER.indexOf(shopSel); shopSel = CAR_ORDER[(k + dir + CAR_ORDER.length) % CAR_ORDER.length]; shopMsg = '';
-    setModel(CAR_DEFS[shopSel], paintOf(shopSel), tuneOf(shopSel)); keepScroll(renderShop);
-  } else {
-    const list = CAR_ORDER.filter(i => save.owned.includes(i)), k = list.indexOf(save.car);
-    equip(list[(k + dir + list.length) % list.length]); renderMenu();
-  }
-}
-function sellCar(id) {
-  const d = CAR_DEFS[id]; if (!save.owned.includes(id) || d.price <= 0) return;
-  save.cash += sellPrice(id); save.owned = save.owned.filter(x => x !== id); delete save.tune[id];
-  if (save.car === id) equip('hachi');
-  shopSel = 'hachi'; setModel(CAR_DEFS.hachi, paintOf('hachi'), tuneOf('hachi'));
-  shopMsg = d.name + ' sold for $' + sellPrice(id) + '.'; persist(); keepScroll(renderShop); garageUpdate();
-}
-$('gBack').addEventListener('click', () => openMenu('home'));
-$('gPlay').addEventListener('click', () => openMenu('maps'));
-$('gPrev').addEventListener('click', () => cycleCar(-1));
-$('gNext').addEventListener('click', () => cycleCar(1));
-$('gSell').addEventListener('click', () => { if (menu === 'shop') sellCar(shopSel); });
+/* ---- top bar cog ---- */
+$('mCog').addEventListener('click', () => { if (menu === 'settings') openMenu('home'); else openMenu('settings'); });
 
 /* ---- dial speedo ---- */
 const dial = (() => {
@@ -854,7 +960,6 @@ const dial = (() => {
   const mk = (tag, at, par = svg) => { const e = document.createElementNS(NS, tag); for (const k in at) e.setAttribute(k, at[k]); par.append(e); return e; };
   const pts = Array.from({ length: 12 }, (_, i) => pt(96, i * 30 + 15).join(',')).join(' ');
   mk('polygon', { points: pts, fill: '#fff', stroke: '#0b0820', 'stroke-width': 7, 'stroke-linejoin': 'round' });
-  const a = pt(80, A0 + SW * 0.7), b = pt(80, A0 + SW);
   mk('path', { d: `M${pt(91, A0 + SW * 0.7)} A91 91 0 0 1 ${pt(91, A0 + SW)} L${pt(82, A0 + SW)} A82 82 0 0 0 ${pt(82, A0 + SW * 0.7)} Z`, fill: '#e3262e' });
   for (let i = 0; i <= 9; i++) {
     const ang = A0 + SW * i / 9, p = pt(66, ang), t = mk('text', { x: p[0], y: p[1] + 6, 'text-anchor': 'middle', 'font-size': 19, 'font-family': 'Russo One, Arial Black, sans-serif', fill: i >= 7 ? '#e3262e' : '#0b0820', stroke: '#fff', 'stroke-width': 0.5 });
@@ -866,36 +971,34 @@ const dial = (() => {
   return needle;
 })();
 
-/* ================= TOUCH + TILT STEERING ================= */
+/* ================= TOUCH + TILT ================= */
 const touch = { gas: 0, brake: 0, hb: 0, boost: 0, left: 0, right: 0 };
 let touchUI = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 let tiltOn = false, tiltSeen = false, tiltRaw = 0, tiltZero = 0, tiltAxis = 0, calibrateNext = true, wheelEl = null;
 const D2R = Math.PI / 180, wrap180 = a => ((a + 540) % 360) - 180;
-const TILT_MAX = [55, 40, 28]; // degrees of wheel turn for full lock: soft / normal / sharp
+const TILT_MAX = [55, 40, 28];
 
 const inGas = () => (K('ArrowUp', 'KeyW') || touch.gas) ? 1 : 0;
 const inBrake = () => (K('ArrowDown', 'KeyS') || touch.brake) ? 1 : 0;
 const inHB = () => (K('Space') || touch.hb) ? 1 : 0;
 const inBoost = () => !!(K('ShiftLeft', 'ShiftRight') || touch.boost);
 const tiltActive = () => touchUI && save.set.ctrl === 'tilt' && tiltOn && tiltSeen;
-function inSteer() { // + = left
+function inSteer() {
   let a = (K('ArrowLeft', 'KeyA') ? 1 : 0) - (K('ArrowRight', 'KeyD') ? 1 : 0) + (touch.left ? 1 : 0) - (touch.right ? 1 : 0);
   if (tiltActive()) a -= tiltAxis * (save.set.flip ? -1 : 1);
   return clamp(a, -1, 1);
 }
-function photoBump(kind) { // photo mode: rock the suspension
+function photoBump(kind) {
   const b = stats.bounce;
   if (kind === 'gas') { SUS.pv -= 1.0 * b.pitchAmp; SUS.hv += 0.45; } else { SUS.pv += 1.1 * b.pitchAmp; SUS.hv -= 0.45; }
 }
-
-// Phone orientation -> where gravity points on screen -> how far the "wheel" is turned.
 function onOrient(e) {
   if (e.beta == null || e.gamma == null) return;
   const b = e.beta * D2R, g = e.gamma * D2R;
-  const dx = Math.sin(g) * Math.cos(b), dy = -Math.sin(b);                 // gravity in device axes
+  const dx = Math.sin(g) * Math.cos(b), dy = -Math.sin(b);
   const ang = ((screen.orientation && screen.orientation.angle != null) ? screen.orientation.angle : (window.orientation || 0)) * D2R;
-  const sx = dx * Math.cos(ang) - dy * Math.sin(ang), sy = dx * Math.sin(ang) + dy * Math.cos(ang); // gravity in screen axes
-  tiltRaw = Math.atan2(sx, -sy) / D2R;                                       // + = wheel turned clockwise (right)
+  const sx = dx * Math.cos(ang) - dy * Math.sin(ang), sy = dx * Math.sin(ang) + dy * Math.cos(ang);
+  tiltRaw = Math.atan2(sx, -sy) / D2R;
   tiltSeen = true;
 }
 function updateTilt(dt) {
@@ -908,7 +1011,7 @@ function updateTilt(dt) {
 }
 const recenter = () => { calibrateNext = true; };
 function tiltFail(msg) { save.set.ctrl = 'btn'; persist(); applyCtrl(); if (msg) toast(msg, true); }
-async function enableTilt() { // must start inside a tap (iOS asks for permission)
+async function enableTilt() {
   if (tiltOn) return true;
   try {
     const DOE = window.DeviceOrientationEvent;
@@ -929,7 +1032,6 @@ function showTip(text) {
   el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
 }
 
-// press-and-hold helper that survives multi-touch and elements disappearing mid-press
 const holders = [];
 function hold(el, apply, onDown) {
   const ids = new Set(), set = () => apply(ids.size > 0);
@@ -959,7 +1061,6 @@ const reCal = () => { calibrateNext = true; };
 addEventListener('orientationchange', reCal);
 if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', reCal);
 
-// always-visible buttons
 for (const el of document.querySelectorAll('#ui button')) el.addEventListener('mousedown', e => e.preventDefault());
 $('btnSettings').addEventListener('click', toggleMenu);
 $('photoX').addEventListener('click', () => setPhoto(false));
@@ -1039,13 +1140,9 @@ function step(dt) {
   const fx = Math.sin(S.h), fz = Math.cos(S.h), rx = -Math.cos(S.h), rz = Math.sin(S.h);
   let vf = S.vx * fx + S.vz * fz, vl = S.vx * rx + S.vz * rz;
   const sp = Math.hypot(vf, vl), slip = Math.atan2(vl, Math.abs(vf) + 0.001);
-
-  // steering with a light counter-steer assist while sliding
   const inp = inSteer() * (brk && vf > 5 ? 1 - s.brakeUnder : 1);
   const assist = -0.3 * clamp(vl / 12, -1, 1) * S.loose;
   S.steer += (clamp(inp + assist, -1, 1) - S.steer) * Math.min(1, dt * (inp ? 8 : 12));
-
-  // longitudinal
   const bst = thr && inBoost() && boost > 0.02 ? 1 : 0;
   if (bst) boost = Math.max(0, boost - dt * 0.25); else if (sp > 9 && Math.abs(slip) > 0.28) boost = Math.min(1, boost + dt * 0.12);
   if (thr) vf += s.power * (bst ? 1.9 : 1) * (1 - clamp(vf / (s.top * (bst ? 1.25 : 1)), 0, 1.2)) * dt * (vf < 0 ? 2 : 1);
@@ -1053,25 +1150,18 @@ function step(dt) {
   vf *= Math.exp(-((thr ? 0.09 : 0.25) + s.dragK) * dt);
   if (!thr && !brk && Math.abs(vf) < 3) vf *= Math.exp(-2.5 * dt);
   if (hb) vf *= Math.exp(-0.45 * dt);
-
-  // lateral grip: power-over and handbrake make the rear loose
   let want = hb ? 1 : (thr && vf > 13 && (Math.abs(S.steer) > 0.35 * s.entry || Math.abs(slip) > 0.25 * s.entry)) ? 1 : 0;
-  if (brk && sp > 10 && s.brakeLoose > 0 && Math.abs(S.steer) > 0.2) want = Math.max(want, s.brakeLoose * 0.8); // rear brake bias: tail locks up
+  if (brk && sp > 10 && s.brakeLoose > 0 && Math.abs(S.steer) > 0.2) want = Math.max(want, s.brakeLoose * 0.8);
   S.loose += (want - S.loose) * Math.min(1, dt * (want ? 9 : 5));
   vl *= Math.exp(-lerp(s.grip, s.drift * (hb ? 0.65 : 1), S.loose) * (1 + s.aeroK * sp * sp) * (wet ? s.wetMul : 1) * dt);
-
-  // yaw
   const dir = vf >= -1 ? 1 : -1;
   const sf = Math.min(1, sp / 6) / (1 + sp / (s.top * 1.5));
   const yaw = S.steer * s.steer * sf * dir * (1 + 0.3 * S.loose) * (hb ? 1.25 : 1);
-
-  // recompose with the OLD heading so inertia is kept, then rotate
   S.vx = fx * vf + rx * vl; S.vz = fz * vf + rz * vl;
   S.h += yaw * dt; S.x += S.vx * dt; S.z += S.vz * dt;
   Object.assign(S, { sp, slip, thr, vf, hb, yaw, bst });
   collide();
 }
-
 function collide() {
   const d = Math.hypot(S.x, S.z) || 1;
   if (d > WALL - CR) hit(-S.x / d, -S.z / d, d - (WALL - CR));
@@ -1111,7 +1201,7 @@ function unlock(id) {
   try { localStorage.setItem('driftrun-ach', JSON.stringify(got)); } catch {}
   toast('🏆 ' + ACHS[id]);
 }
-function kick() { // clutch kick: instant slide entry
+function kick() {
   if (S.sp < 8) return;
   S.loose = 1; S.h += (S.steer >= 0 ? 1 : -1) * 0.12; S.vx += Math.sin(S.h) * 3; S.vz += Math.cos(S.h) * 3; shake = 0.15;
 }
@@ -1145,7 +1235,6 @@ function scoring(dt) {
       if (driftT > t && called < t) { called = t; toast(w + '  x' + mult.toFixed(1)); }
     }
   }
-  // close calls and wall rides
   if (S.sp > 12) {
     for (const o of OBST) {
       const g = Math.hypot(S.x - o.x, S.z - o.z) - o.r - CR;
@@ -1157,7 +1246,6 @@ function scoring(dt) {
       if (wallCd <= 0) { wallCd = 2; toast('WALL RIDE'); unlock('wall'); }
     }
   }
-  // risk: unbanked points sit exposed for 4s of non-drifting, or cash in at the pad (+25%)
   if (!drifting && pending > 0 && (gap += dt) > 4) bank(1);
   if (pending > 0 && S.sp > 5 && Math.hypot(S.x - PAD.x, S.z - PAD.z) < PAD.r) bank(1.25, 'PAD BANK');
 }
@@ -1182,7 +1270,7 @@ function hud() {
   S.rpm += (rpm - S.rpm) * Math.min(1, 0.15);
 }
 
-/* ================= MULTIPLAYER (split screen) ================= */
+/* ================= MULTIPLAYER ================= */
 let mp = null;
 const mpEl = $('mp'), bannerEl = $('mpBanner');
 const mpCams = Array.from({ length: 4 }, () => new THREE.PerspectiveCamera(62, 1, 0.1, 3000));
@@ -1193,7 +1281,6 @@ mpRing.position.y = 3.5; mpRing.visible = false; scene.add(mpRing);
 const orbCol = new THREE.Color();
 let mpSmokeAcc = 0, mpSfxCd = 0;
 
-// light-weight copy of a car (shared geometry) used for the snake's tail
 function makeKit(def, hex) {
   const paint = liveryMat(def, hex);
   const bg = toGeo(bodyLoft(def)), cg = toGeo(cabinLoft(def)), lay = wheelLayout(def), tg = {};
@@ -1312,6 +1399,7 @@ function handleMpEvents(evs) {
     else if (e.type === 'go') { showBanner('GO!', 0.8, '#2fe3a0'); sfx('pop'); }
     else if (e.type === 'score') { showBanner(PNAMES[e.attacker] + ' SCORES!', 2.4, col(e.attacker)); sfx('score'); if (touchUI && save.set.vib && navigator.vibrate) navigator.vibrate(60); }
     else if (e.type === 'kill') { showBanner(PNAMES[e.victim] + ' IS OUT!', 1.6, col(e.victim)); hitS = true; }
+    else if (e.type === 'grow') { if (e.segs > 0 && e.segs % 4 === 0) sfx('grow'); }
     else if (e.type === 'roundEnd' && m.mode === 'snake') showBanner(e.winner >= 0 ? PNAMES[e.winner] + ' WINS THE ROUND!' : 'DRAW!', 2.4, e.winner >= 0 ? col(e.winner) : '');
     else if (e.type === 'matchEnd') openMenu('mpend');
     else if (e.type === 'bump') { e.a.sus.hv -= e.closing * 0.02; e.b.sus.hv -= e.closing * 0.02; hitS = true; }
@@ -1341,7 +1429,6 @@ function mpSync(dt) {
       const poses = c.alive ? segmentPoses(c) : [];
       mp.pools[i].forEach((g, k) => { const p = poses[k]; g.visible = !!p; if (p) { g.position.set(p.x, 0, p.z); g.rotation.y = p.h; } });
     }
-    // chase camera
     const vAng = c.sp > 4 ? Math.atan2(c.vx, c.vz) : c.h;
     c.camH += wrap(c.h + 0.4 * wrap(vAng - c.h) - c.camH) * Math.min(1, dt * 3.2);
     const grow = m.mode === 'snake' ? c.segs : 0, dist = 8 + c.sp * 0.03 + Math.min(7, grow * 0.55), cam = mpCams[i];
@@ -1357,7 +1444,7 @@ function mpSync(dt) {
       if (o.on) orbMesh.setColorAt(i, orbCol.setHSL(o.hue, 0.95, 0.6));
     });
     orbMesh.instanceMatrix.needsUpdate = true; if (orbMesh.instanceColor) orbMesh.instanceColor.needsUpdate = true;
-    dummy.scale.set(0, 0, 0); // leave the shared dummy neutral for skid marks
+    dummy.scale.set(0, 0, 0);
   }
   for (const p of smoke) {
     if (p.life <= 0) continue;
@@ -1402,7 +1489,7 @@ function mpFrame(rdt) {
     const m = mp.m;
     handleMpEvents(updateMatch(m, m.cars.map((_, i) => mpInput(i)), rdt));
   }
-  if (!mp) return; // a match-end event may have just replaced it
+  if (!mp) return;
   mpSync(rdt); mpRender(); mpHudUpdate();
 }
 
@@ -1414,7 +1501,6 @@ function visuals(dt) {
   const P = inMenu ? STAGE : S, PY = inMenu ? STAGE.y : 0;
   carGroup.position.set(P.x, PY, P.z); carGroup.rotation.y = inMenu ? 0 : S.h;
 
-  // body hangs on the springs; the wheels stay planted
   suspension(dt);
   m.pivot.position.y = PIV + SUS.heave + m.tune.rideH / 1000;
   m.pivot.rotation.set(SUS.pitch, 0, SUS.roll);
@@ -1424,7 +1510,6 @@ function visuals(dt) {
     if (!inMenu && !photo) w.roll.rotation.x += (S.vf / w.R) * dt;
   }
 
-  // skid marks + smoke
   const skidding = !inMenu && !photo && ((Math.abs(S.slip) > 0.2 && S.sp > 7) || (S.hb && S.sp > 6));
   const lx = Math.cos(S.h), lz = -Math.sin(S.h), fx = Math.sin(S.h), fz = Math.cos(S.h);
   const rz = m.lay.rear.z, rw = m.rearX;
@@ -1452,7 +1537,6 @@ function visuals(dt) {
     if (p.life <= 0) p.s.visible = false;
   }
 
-  // cameras
   const speed = Math.hypot(S.vx, S.vz), velAng = speed > 4 ? Math.atan2(S.vx, S.vz) : S.h;
   camH += wrap(S.h + 0.4 * wrap(velAng - S.h) - camH) * Math.min(1, dt * 3.2);
   let fovT = 60 + speed * 0.5;
@@ -1476,8 +1560,10 @@ function visuals(dt) {
     if (photo) { orbit += dt * 0.4; camera.position.set(S.x + Math.sin(orbit) * 9, 2.6, S.z + Math.cos(orbit) * 9); camera.lookAt(S.x, 0.8, S.z); }
   }
   camera.fov = lerp(camera.fov, fovT, Math.min(1, dt * 3));
-  // keep the car in the clear part of the screen next to the menu panels
-  const voT = !inMenu || innerWidth <= 640 ? 0 : -(menu === 'home' ? 209 : menu === 'settings' ? 229 : 70);
+  // keep the car in the clear part of the screen next to the open menu column.
+  // The negative offsets are eyeballed against the menu panel widths in the CSS;
+  // if those change, retune these values.
+  const voT = !inMenu || innerWidth <= 780 ? 0 : -(menu === 'home' || menu === 'shop' || menu === 'edit' ? 240 : 200);
   viewOff += (voT - viewOff) * Math.min(1, dt * 6);
   if (Math.abs(viewOff) > 0.5) camera.setViewOffset(innerWidth, innerHeight, viewOff, 0, innerWidth, innerHeight); else camera.clearViewOffset();
   camera.updateProjectionMatrix();
@@ -1521,5 +1607,4 @@ renderer.setAnimationLoop(now => {
   renderer.render(scene, camera);
 });
 
-// boot: build the equipped car and open the home menu
 applyCtrl(); setModel(carDef, paintOf(save.car), tune); recalc(); openMenu('home');
