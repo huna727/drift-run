@@ -52,10 +52,7 @@ sun.shadow.bias = -0.0005;
 scene.add(sun, sun.target);
 const hemi = scene.children.find(o => o.isHemisphereLight);
 
-/* ================= MAPS =================
-   Each map has a look (sky / fog / colors), an arena radius, an island flag and
-   some extra decor. Track lines and checkpoints are per map so drift and race
-   modes feel different on each. */
+/* ================= MAPS ================= */
 const MAPS = [
   {
     id: 'sunset', name: 'Sunset Arena',
@@ -104,11 +101,17 @@ const MAPS = [
   },
 ];
 
-/* world groups that get rebuilt per map */
+/* ================= WORLD STATE ================= */
 const worldGroup = new THREE.Group(); scene.add(worldGroup);
 let currentMap = MAPS[0];
 let trackLineGroup = null;
 let raceGateGroup = null;
+
+// these are populated / recycled by buildWorld()
+const OBST = [];
+const ZONES = [];
+const PAD = { x: 0, z: 95, r: 8, mesh: null };
+let zoneI = 0, zoneT = 0;
 
 function clearWorld() {
   worldGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
@@ -126,8 +129,8 @@ function buildWorld(map) {
   scene.fog.color.setHex(map.fog);
   scene.fog.near = 220; scene.fog.far = 1100;
   if (hemi) hemi.color.setHex(map.night ? 0x5566aa : 0xdfeeff);
-  sun.intensity = map.night ? 0.9 : (map.slippery ? 2.2 : 2.6);
-  if (map.night) { sun.color.setHex(0x8899cc); sun.intensity = 0.5; } else sun.color.setHex(0xfff1d6);
+  if (map.night) { sun.color.setHex(0x8899cc); sun.intensity = 0.5; }
+  else { sun.color.setHex(0xfff1d6); sun.intensity = map.slippery ? 2.2 : 2.6; }
 
   const grass = new THREE.Mesh(new THREE.CircleGeometry(1100, 32).rotateX(-Math.PI / 2), M(map.grass));
   grass.receiveShadow = true;
@@ -137,7 +140,6 @@ function buildWorld(map) {
   asphalt.position.y = 0.02; asphalt.receiveShadow = true;
   worldGroup.add(asphalt);
 
-  // painted rings on the asphalt
   for (const r of [WALL * 0.42, WALL * 0.62, WALL * 0.84]) {
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(r - 0.2, r + 0.2, 160).rotateX(-Math.PI / 2),
@@ -147,7 +149,6 @@ function buildWorld(map) {
     worldGroup.add(ring);
   }
 
-  // island + tower (only some maps)
   if (map.island) {
     const island = new THREE.Mesh(new THREE.CylinderGeometry(ISL - 1, ISL + 1.5, 3, 28), M(map.night ? 0x3a2a5a : 0x7a8398));
     island.position.y = 1.5; island.castShadow = island.receiveShadow = true;
@@ -160,7 +161,6 @@ function buildWorld(map) {
     worldGroup.add(island, top, tower, roof);
   }
 
-  // barrier ring
   {
     const N = 80, mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(11.7, 1.3, 1.2), M(0xffffff), N);
     const d = new THREE.Object3D(), c = new THREE.Color();
@@ -203,7 +203,7 @@ function buildWorld(map) {
     worldGroup.add(g);
   }
 
-  // drift zones (used for score pads)
+  // drift zones
   ZONES.length = 0;
   const nz = 4;
   for (let i = 0; i < nz; i++) {
@@ -214,13 +214,12 @@ function buildWorld(map) {
     worldGroup.add(mesh);
     ZONES.push({ x, z, r: 16, mat, mesh });
   }
-  // bank pad
   PAD.x = 0; PAD.z = WALL * 0.62;
   const padMesh = new THREE.Mesh(new THREE.CylinderGeometry(PAD.r, PAD.r, 0.1, 24), new THREE.MeshBasicMaterial({ color: 0x3dff8a, transparent: true, opacity: 0.4, depthWrite: false }));
   padMesh.position.set(PAD.x, 0.07, PAD.z);
   worldGroup.add(padMesh); PAD.mesh = padMesh;
 
-  // decor around the edge
+  // decor
   if (map.decor === 'trees' || map.decor === 'pines') {
     const N = 180;
     const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.4, 0.6, 3, 5), M(0x5b4636), N);
@@ -240,7 +239,7 @@ function buildWorld(map) {
       const a = i / 8 * Math.PI * 2, r = WALL + 60 + Math.random() * 80;
       const cg = new THREE.Group();
       const c = M(map.night ? 0x2a1a4a : 0x3a3a48);
-      cg.add(new THREE.Mesh(new THREE.BoxGeometry(2, 30, 2), c)).children;
+      cg.add(new THREE.Mesh(new THREE.BoxGeometry(2, 30, 2), c));
       const top = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 22), c); top.position.set(0, 15, 10); cg.add(top);
       const light = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff3344 }));
       light.position.set(0, 16, 20); cg.add(light);
@@ -268,7 +267,7 @@ function buildWorld(map) {
     worldGroup.add(m);
   }
 
-  // puffy clouds / stars
+  // clouds or stars
   if (map.night) {
     for (let i = 0; i < 220; i++) {
       const a = Math.random() * Math.PI * 2, r = 900 + Math.random() * 500, y = 200 + Math.random() * 700;
@@ -303,7 +302,6 @@ function buildWorld(map) {
     fence.position.y = 3.5; worldGroup.add(fence);
   }
 
-  // drift track painted lines
   buildTrackLines(map);
 }
 
@@ -318,7 +316,7 @@ function buildTrackLines(map) {
     const dx = x2 - x1, dz = z2 - z1, len = Math.hypot(dx, dz), ang = Math.atan2(dx, dz);
     const segs = Math.max(2, Math.floor(len / 6));
     for (let s = 0; s < segs; s++) {
-      if (s % 2) continue; // dashed
+      if (s % 2) continue;
       const t = s / segs, t2 = (s + 1) / segs;
       const mx = x1 + dx * (t + t2) / 2, mz = z1 + dz * (t + t2) / 2;
       const seg = new THREE.Mesh(new THREE.PlaneGeometry(0.55, len / segs * 0.85).rotateX(-Math.PI / 2), lineMat);
@@ -366,7 +364,7 @@ function updateGateColors() {
       if (!c.material || !c.material.color) return;
       const base = past ? 0x3ddc5a : cur ? 0xffd23f : 0x666677;
       c.material.color.setHex(base);
-      c.material.emissive.setHex(base);
+      if (c.material.emissive) c.material.emissive.setHex(base);
       c.material.emissiveIntensity = cur ? 0.6 : 0.2;
     });
   });
@@ -469,14 +467,13 @@ function mkBar(a, b, r, mat, seg = 8) {
   return m;
 }
 
-/* ================= LIVERY — clean, no decals ================= */
+/* ================= LIVERY (clean) ================= */
 function liveryTex(def, hex, b) {
   const W = 512, H = 256, c = document.createElement('canvas'); c.width = W; c.height = H;
   const g = c.getContext('2d');
   const base = new THREE.Color(hex);
   const lum = base.r * 0.3 + base.g * 0.59 + base.b * 0.11;
   const isLight = lum > 0.6;
-
   const X = z => clamp((z - b.zmin) / (b.zmax - b.zmin), 0, 1) * W;
   const Y = y => (1 - clamp((y - b.ymin) / (b.ymax - b.ymin), 0, 1)) * H;
 
@@ -489,22 +486,18 @@ function liveryTex(def, hex, b) {
   grad.addColorStop(1, 'rgba(0,0,0,0.30)');
   g.fillStyle = grad; g.fillRect(0, 0, W, H);
 
-  // dark rocker band
   g.fillStyle = isLight ? '#101528' : '#08080e';
   g.fillRect(0, Y(0.28), W, H - Y(0.28));
   g.fillStyle = 'rgba(255,255,255,0.16)';
   g.fillRect(0, Y(0.28), W, 2);
 
-  // single clean accent stripe
   const accentCol = isLight ? '#c81f2e' : '#ffd23f';
   const sy1 = Y(0.60), sy2 = Y(0.52);
   g.fillStyle = accentCol;
   g.fillRect(X(-2.6), sy1, X(2.6) - X(-2.6), sy2 - sy1);
-  // pinline
   g.fillStyle = 'rgba(255,255,255,0.35)';
   g.fillRect(X(-2.6), sy1 - 2, X(2.6) - X(-2.6), 2);
 
-  // door shut line
   g.fillStyle = 'rgba(0,0,0,0.45)';
   g.fillRect(X(0.62), Y(0.82), 2, Y(0.28) - Y(0.82));
   g.fillRect(X(-1.05), Y(0.82), 2, Y(0.28) - Y(0.82));
@@ -522,7 +515,7 @@ function repaint(m, hex) {
   m.paint.needsUpdate = true;
 }
 
-/* ================= INTERIOR: SEAT + DRIVER + CREW ================= */
+/* ================= INTERIOR ================= */
 function buildSeat(scl) {
   const g = new THREE.Group();
   const W = 0.34, D = 0.34, BH = 0.28;
@@ -548,15 +541,12 @@ function buildSeat(scl) {
 function buildCockpitDriver(scl) {
   const rig = new THREE.Group();
   const S = scl;
-
   const hips = new THREE.Mesh(new THREE.BoxGeometry(0.22 * S, 0.12 * S, 0.18 * S), suit);
   hips.position.y = 0.02 * S; rig.add(hips);
-
   const torso = new THREE.Group();
   torso.position.set(0, 0.08 * S, 0);
   torso.rotation.x = -0.14;
   rig.add(torso);
-
   const chest = new THREE.Mesh(new THREE.BoxGeometry(0.26 * S, 0.22 * S, 0.16 * S), suit);
   chest.position.y = 0.11 * S; torso.add(chest);
   for (const sx of [1, -1]) {
@@ -575,10 +565,8 @@ function buildCockpitDriver(scl) {
   visor.position.set(0, head.position.y - 0.002 * S, 0.078 * S); torso.add(visor);
   const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.09 * S, 0.006, 0.20 * S), suitAccent);
   stripe.position.set(0, head.position.y + 0.076 * S, 0.01 * S); torso.add(stripe);
-
   const shoulders = new THREE.Mesh(new THREE.BoxGeometry(0.34 * S, 0.06 * S, 0.16 * S), suit);
   shoulders.position.y = 0.22 * S; torso.add(shoulders);
-
   const swTilt = new THREE.Group();
   swTilt.position.set(0, 0.17 * S, 0.25 * S);
   swTilt.rotation.x = 1.15;
@@ -594,7 +582,6 @@ function buildCockpitDriver(scl) {
   hub.rotation.x = Math.PI / 2; swSpin.add(hub);
   const hubDot = new THREE.Mesh(new THREE.CylinderGeometry(0.008 * S, 0.008 * S, 0.026 * S, 8), redCal);
   hubDot.rotation.x = Math.PI / 2; swSpin.add(hubDot);
-
   const shL = [-0.16 * S, 0.21 * S, 0], shR = [0.16 * S, 0.21 * S, 0];
   const elL = [-0.19 * S, 0.10 * S, 0.14 * S], elR = [0.19 * S, 0.10 * S, 0.14 * S];
   const hdL = [-0.09 * S, 0.17 * S, 0.26 * S], hdR = [0.09 * S, 0.17 * S, 0.26 * S];
@@ -605,7 +592,6 @@ function buildCockpitDriver(scl) {
   const handGeo = new THREE.SphereGeometry(0.040 * S, 8, 6);
   const hL = new THREE.Mesh(handGeo, skin); hL.position.set(...hdL); torso.add(hL);
   const hR = new THREE.Mesh(handGeo, skin); hR.position.set(...hdR); torso.add(hR);
-
   for (const sx of [1, -1]) {
     const hip = [sx * 0.09 * S, 0.02 * S, 0];
     const knee = [sx * 0.11 * S, 0.05 * S, 0.24 * S];
@@ -613,25 +599,12 @@ function buildCockpitDriver(scl) {
     rig.add(mkBar(hip, knee, 0.052 * S, suit, 6));
     rig.add(mkBar(knee, foot, 0.048 * S, suit, 6));
   }
-
   return { rig, swSpin, head };
 }
 
-/* ---------- STANDING CREW (fixed proportions) ---------- */
 function buildStandingCrew() {
   const g = new THREE.Group();
-  // human proportions: total ~1.75 tall, head diameter ~0.24
-  // Feet at 0, head top at ~1.75.
-  const legY = 0.05;         // foot top
-  const shinTop = 0.50;      // shin length 0.45
-  const thighTop = 0.92;     // thigh length 0.42
-  const hipY = 0.92;
-  const chestY = 1.20;       // torso center
-  const shoulderY = 1.42;
-  const neckY = 1.48;
-  const headY = 1.58;        // head center
-  const headR = 0.12;
-
+  const legY = 0.05, shinTop = 0.50, hipY = 0.92, shoulderY = 1.42, neckY = 1.48, headY = 1.58, headR = 0.12;
   for (const sx of [1, -1]) {
     const hip = [sx * 0.11, hipY, 0];
     const knee = [sx * 0.10, shinTop, 0.01];
@@ -645,17 +618,14 @@ function buildStandingCrew() {
   pelvis.position.y = 0.96; g.add(pelvis);
   const bt = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.035, 0.21), belt);
   bt.position.y = 1.02; g.add(bt);
-
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.52, 0.22), suit);
   torso.position.y = 1.28; g.add(torso);
   const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.06, 0.23), suitAccent);
   stripe.position.y = 1.30; g.add(stripe);
   const collar = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.03, 0.22), harnessMat);
   collar.position.y = 1.54; g.add(collar);
-
   const sh = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.10, 0.22), suit);
   sh.position.y = 1.48; g.add(sh);
-
   for (const sx of [1, -1]) {
     const shPt = [sx * 0.24, 1.46, 0];
     const elPt = [sx * 0.28, 1.15, 0.02];
@@ -666,7 +636,6 @@ function buildStandingCrew() {
     hand.position.set(...handPt); g.add(hand);
     g.add(mkBar([sx * 0.24, 1.44, 0.02], [sx * 0.28, 1.15, 0.03], 0.007, suitAccent, 5));
   }
-
   const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.065, 0.09, 8), skin);
   neck.position.y = neckY; g.add(neck);
   const head = new THREE.Mesh(new THREE.SphereGeometry(headR, 14, 12), skin);
@@ -677,7 +646,6 @@ function buildStandingCrew() {
   visor.position.set(0, headY, headR + 0.01); g.add(visor);
   const stripe2 = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.008, 0.26), suitAccent);
   stripe2.position.y = headY + headR * 0.85; g.add(stripe2);
-
   return g;
 }
 
@@ -691,7 +659,6 @@ function buildModel(def, paintHex) {
 
   const root = new THREE.Group(), pivot = new THREE.Group(), body = new THREE.Group();
   pivot.position.y = PIV; body.position.y = -PIV; root.add(pivot); pivot.add(body);
-
   const put = (geo, mat, x, y, z, parent = body) => {
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(x, y, z); mesh.castShadow = true;
@@ -713,12 +680,10 @@ function buildModel(def, paintHex) {
   const cabH = roofY - floorY;
   const scl = clamp(cabH / 0.52, 0.62, 1.05);
 
-  /* ---------- FRONT ---------- */
   const noseYBot = nr[0], noseYTop = nr[4];
   const headY = noseYBot + (noseYTop - noseYBot) * 0.58;
   const headHW = halfWidthAt(nr, headY);
   const headH = Math.min(0.14, (noseYTop - noseYBot) * 0.30);
-
   if (!def.popup) {
     for (const sx of [1, -1]) {
       box(headHW * 0.72, headH * 1.15, 0.04, blackTrim, sx * headHW * 0.55, headY, nz + 0.005);
@@ -726,35 +691,27 @@ function buildModel(def, paintHex) {
       box(headHW * 0.22, headH * 0.55, 0.015, lampHot, sx * headHW * 0.55 + sx * 0.02, headY - 0.01, nz + 0.046);
     }
   } else {
-    // FLUSH popup pods - just a subtle outline on the hood, no raised box
     for (const sx of [1, -1]) {
       const podY = sampleBody(rows, nz - 0.35)[4];
-      // a shallow lens set into the hood top (very low profile)
       box(0.32, 0.012, 0.20, lamp, sx * 0.5, podY + 0.006, nz - 0.35);
-      // dark rim around it
       box(0.35, 0.005, 0.23, blackTrim, sx * 0.5, podY + 0.001, nz - 0.35);
     }
   }
-
   const grilleY = noseYBot + (noseYTop - noseYBot) * 0.22;
   const grilleHW = halfWidthAt(nr, grilleY);
   box(grilleHW * 1.55, 0.09, 0.03, blackTrim, 0, grilleY, nz + 0.012);
   for (const yOff of [-0.02, 0, 0.02]) box(grilleHW * 1.45, 0.008, 0.035, chrome, 0, grilleY + yOff, nz + 0.022);
   box(0.05, 0.05, 0.015, chrome, 0, grilleY, nz + 0.035);
   box(0.025, 0.025, 0.018, redCal, 0, grilleY, nz + 0.042);
-
   box(halfWidthAt(nr, noseYBot + 0.06) * 1.88, 0.06, 0.07, blackTrim, 0, noseYBot + 0.05, nz + 0.01);
-
   const splitterW = halfWidthAt(nr, noseYBot) * 2 + 0.04;
   const splitter = put(new THREE.BoxGeometry(splitterW, 0.028, 1), carbonMat, 0, noseYBot - 0.018, nz);
   for (const sx of [1, -1]) box(0.02, 0.10, 0.10, carbonMat, sx * (splitterW / 2 - 0.05), noseYBot + 0.06, nz + 0.02);
 
-  /* ---------- REAR ---------- */
   const tailYBot = tr[0], tailYTop = tr[4];
   const tailY = tailYBot + (tailYTop - tailYBot) * 0.55;
   const tailHW = halfWidthAt(tr, tailY);
   const tailH = Math.min(0.14, (tailYTop - tailYBot) * 0.32);
-
   for (const sx of [1, -1]) {
     box(tailHW * 0.75, tailH * 1.15, 0.04, blackTrim, sx * tailHW * 0.55, tailY, tz - 0.005);
     box(tailHW * 0.68, tailH, 0.02, tail, sx * tailHW * 0.55, tailY, tz - 0.032);
@@ -763,11 +720,9 @@ function buildModel(def, paintHex) {
   }
   box(tailHW * 1.15, 0.022, 0.02, tail, 0, tailY, tz - 0.040);
   box(halfWidthAt(tr, tailYBot + 0.06) * 1.88, 0.07, 0.07, blackTrim, 0, tailYBot + 0.05, tz - 0.01);
-
   const diffW = halfWidthAt(tr, tailYBot) * 1.88;
   box(diffW, 0.09, 0.22, carbonMat, 0, tailYBot + 0.09, tz - 0.075);
   for (let k = -2; k <= 2; k++) box(0.014, 0.07, 0.20, carbonMat, k * diffW / 5.5, tailYBot + 0.09, tz - 0.095);
-
   {
     const exY = tailYBot + 0.08;
     const exX = halfWidthAt(tr, exY) * 0.62;
@@ -778,8 +733,6 @@ function buildModel(def, paintHex) {
       inner.position.set(sx * exX, exY, tz - 0.028); body.add(inner);
     }
   }
-
-  /* ---------- MIRRORS + B-PILLAR ---------- */
   {
     const mz = def.cab[0][0] - 0.15, ms = sampleCab(def, mz);
     const mhw = ms.wb + 0.02, mhy = ms.yb + 0.13;
@@ -791,8 +744,6 @@ function buildModel(def, paintHex) {
   }
   const bp = sampleCab(def, def.bpillar), bpH = bp.yr - bp.yb;
   if (bpH > 0.08) for (const sx of [1, -1]) box(0.04, bpH, 0.06, solid, sx * (bp.wb * 0.97), bp.yb + bpH / 2, def.bpillar);
-
-  /* ---------- HOOD ---------- */
   if (def.scoop) {
     const s = def.scoop, sy = sampleBody(rows, s.z)[4];
     box(s.w, s.h, s.l, solid, 0, sy + s.h / 2, s.z);
@@ -805,8 +756,6 @@ function buildModel(def, paintHex) {
       box(0.024, 0.018, v.l * 0.9, chrome, sx * (hw + 0.008), v.y, v.z);
     }
   }
-
-  /* ---------- WING ---------- */
   const ws = def.wingSpec;
   const wingY = sampleBody(rows, ws.z)[4] - 0.005;
   const wing = new THREE.Group();
@@ -820,7 +769,6 @@ function buildModel(def, paintHex) {
   for (const sx of [1, -1]) box(0.02, 0.16, ws.chord + 0.06, carbonMat, sx * (ws.hw + 0.01), 0.0, 0, plane);
   box(ws.hw * 2, 0.018, 0.03, suitAccent, 0, 0.024, -ws.chord * 0.42, plane);
 
-  /* ---------- INTERIOR ---------- */
   const intW = Math.min(cm.wb, cm.wr) * 0.94;
   const intH = cabH * 0.88;
   box(intW * 2, 0.012, zf - zr - 0.06, interior, 0, floorY + 0.006, zMid);
@@ -869,7 +817,6 @@ function buildModel(def, paintHex) {
   driver.rig.position.set(-0.30, floorY + 0.02, zMid - 0.02);
   body.add(driver.rig);
 
-  /* ---------- WHEELS ---------- */
   const lay = wheelLayout(def), wheels = [];
   for (const axle of ['front', 'rear']) {
     const L = lay[axle], front = axle === 'front';
@@ -889,7 +836,6 @@ function buildModel(def, paintHex) {
       const wp = new THREE.Group(), cg = new THREE.Group(), roll = new THREE.Group();
       wp.position.set(sx * L.x, L.R, L.z);
       wp.add(cg); cg.add(roll); root.add(wp);
-
       const tyre = new THREE.Mesh(tyreGeo, tyreMat); tyre.castShadow = true; roll.add(tyre);
       roll.add(new THREE.Mesh(rimGeo, spokeMat));
       for (let k = 0; k < 5; k++) {
@@ -909,19 +855,15 @@ function buildModel(def, paintHex) {
         lug.position.z = Math.sin(a) * rimR * 0.35;
         roll.add(lug);
       }
-
       const disc = new THREE.Mesh(discGeo, spokeMat);
       disc.position.x = -sx * L.w * 0.2; cg.add(disc);
       const cal = new THREE.Mesh(calGeo, redCal);
       cal.position.set(-sx * L.w * 0.2, L.R * 0.40, L.R * 0.15); cg.add(cal);
-
       const flare = put(flareGeo, solid, sx * (L.x + 0.02), L.R, L.z);
       put(linerGeo, blackTrim, sx * (L.x + 0.02), L.R, L.z);
-
       wheels.push({ pivot: wp, camberG: cg, roll, flare, sx, axle, front, R: L.R, baseX: L.x });
     }
   }
-
   return {
     def, root, pivot, body, paint, solid, wheels, wing, plane, splitter, lay, nz,
     nose: nr, tune: null, toe: { front: 0, rear: 0 }, rearX: lay.rear.x, bb,
@@ -1055,17 +997,9 @@ const h = (tag, props = {}, ...kids) => {
 };
 const hex6 = c => '#' + c.toString(16).padStart(6, '0');
 function keepScroll(fn) { const old = mLeft.querySelector('.mscroll'); const st = old ? old.scrollTop : mLeft.scrollTop; fn(); mLeft.scrollTop = st; }
-
-const gbtn = (icon, label, sub, fn, cls = '') => h('button', {
-  class: 'gbtn ' + cls, type: 'button', onclick: fn
-},
-  h('span', { class: 'ic' }, icon),
-  h('span', { class: 'tx' }, h('span', {}, label), sub ? h('small', {}, sub) : null));
+const gbtn = (icon, label, sub, fn, cls = '') => h('button', { class: 'gbtn ' + cls, type: 'button', onclick: fn }, h('span', { class: 'ic' }, icon), h('span', { class: 'tx' }, h('span', {}, label), sub ? h('small', {}, sub) : null));
 const sbtn = (label, fn, cls = '') => h('button', { class: 'gbtn sm ' + cls, type: 'button', onclick: fn }, h('span', { class: 'tx' }, h('span', {}, label)));
-
-const mHead = (title, sub) => h('header', {},
-  h('h1', { class: 'm-title' }, title),
-  sub ? h('p', { class: 'm-sub' }, sub) : null);
+const mHead = (title, sub) => h('header', {}, h('h1', { class: 'm-title' }, title), sub ? h('p', { class: 'm-sub' }, sub) : null);
 const mSec = (title, ...kids) => h('section', { class: 'm-sec' }, title ? h('h3', {}, title) : null, ...kids);
 const footSet = (...kids) => mFoot.replaceChildren(...kids.filter(Boolean));
 const clearFoot = () => mFoot.replaceChildren();
@@ -1085,7 +1019,6 @@ function updateMenuTopBar() {
   $('mCash').textContent = '$' + save.cash.toLocaleString();
   $('mBest').textContent = best.toLocaleString();
 }
-
 function openMenu(screen) {
   menu = screen; for (const k in keys) keys[k] = false; releaseTouch();
   menuEl.classList.remove('off'); syncHud(); updateMenuTopBar();
@@ -1152,9 +1085,7 @@ function renderHome() {
 }
 
 const tog = (label, hint, get, set) => {
-  const b = h('button', { class: 'tog' + (get() ? ' on' : ''), type: 'button', role: 'switch', 'aria-checked': String(!!get()), 'aria-label': label, onclick: () => {
-    set(!get()); b.classList.toggle('on', !!get()); b.setAttribute('aria-checked', String(!!get()));
-  } }, h('i'));
+  const b = h('button', { class: 'tog' + (get() ? ' on' : ''), type: 'button', role: 'switch', 'aria-checked': String(!!get()), 'aria-label': label, onclick: () => { set(!get()); b.classList.toggle('on', !!get()); b.setAttribute('aria-checked', String(!!get())); } }, h('i'));
   return h('div', { class: 'trow' }, h('div', { class: 'tl' }, h('b', {}, label), hint ? h('div', { class: 'hint' }, hint) : null), b);
 };
 const segRow = (label, hint, opts, get, set) => {
@@ -1163,12 +1094,8 @@ const segRow = (label, hint, opts, get, set) => {
   return h('div', { class: 'ctl' }, h('div', { class: 'clab' }, h('span', {}, label)), wrap, hint ? h('div', { class: 'hint' }, hint) : null);
 };
 function setWet(v) { wet = v; scene.fog.color.setHex(wet ? 0x8a93a8 : HORIZON); sun.intensity = wet ? 1.1 : 2.4; }
-function setTimed(v) { mode = v ? 'timed' : 'free'; reset(); toast(v ? 'TIMED  90s' : 'FREESTYLE'); }
 function setMute(v) { save.set.mute = v; persist(); if (audio) audio.master.gain.value = v ? 0 : 1; }
-function setPhoto(v) {
-  photo = v; syncHud();
-  if (v && touchUI) showTip('Tap left / right to bounce the suspension');
-}
+function setPhoto(v) { photo = v; syncHud(); if (v && touchUI) showTip('Tap left / right to bounce the suspension'); }
 
 function renderSettings() {
   const secs = [];
@@ -1184,21 +1111,10 @@ function renderSettings() {
       }),
       segRow('Tilt sensitivity', 'Soft = turn further for full lock.', ['Soft', 'Normal', 'Sharp'], () => save.set.sens, i => { save.set.sens = i; persist(); }),
       tog('Flip tilt direction', 'Turn this on if the car steers the wrong way.', () => save.set.flip, v => { save.set.flip = v; persist(); }),
-      h('div', { class: 'wheelrow', style: 'display:flex;align-items:center;gap:16px;margin-top:12px' },
-        wheelEl,
-        h('div', { style: 'flex:1' },
-          h('div', { class: 'row', style: 'display:flex;gap:8px' }, sbtn('Recenter', () => { recenter(); upd(); }, 'blue')),
-          status))
+      h('div', { class: 'wheelrow', style: 'display:flex;align-items:center;gap:16px;margin-top:12px' }, wheelEl, h('div', { style: 'flex:1' }, h('div', { class: 'row', style: 'display:flex;gap:8px' }, sbtn('Recenter', () => { recenter(); upd(); }, 'blue')), status))
     ));
   } else {
-    secs.push(mSec('Keyboard',
-      h('div', { class: 'ctl' },
-        h('div', { class: 'hint', style: 'line-height:2' },
-          'W / S  gas & brake   -   A / D  steer', h('br'),
-          'Space  handbrake   -   Shift  boost', h('br'),
-          '1 / 2 / 3  speed class   -   Esc  menu')
-      )
-    ));
+    secs.push(mSec('Keyboard', h('div', { class: 'ctl' }, h('div', { class: 'hint', style: 'line-height:2' }, 'W / S  gas & brake   -   A / D  steer', h('br'), 'Space  handbrake   -   Shift  boost', h('br'), '1 / 2 / 3  speed class   -   Esc  menu'))));
   }
   const game = [
     segRow('Camera', null, ['Chase', 'Hood', 'Far'], () => camMode, i => { camMode = i; }),
@@ -1207,45 +1123,28 @@ function renderSettings() {
   ];
   if (touchUI) game.push(tog('Vibration', 'Buzz on crashes.', () => save.set.vib, v => { save.set.vib = v; persist(); if (v) navigator.vibrate?.(30); }));
   secs.push(mSec('Gameplay', ...game));
-
   const acts = [sbtn('Reset car', () => { reset(); closeMenu(); }, 'blue')];
   if (document.fullscreenEnabled) acts.push(sbtn('Fullscreen', () => { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {}); }, 'blue'));
   secs.push(mSec('Actions', h('div', { class: 'chips' }, ...acts)));
-
-  mLeft.replaceChildren(
-    h('div', { class: 'm-screen' },
-      mHead('SETTINGS', 'Dial in the feel. Changes save automatically.'),
-      ...secs
-    )
-  );
+  mLeft.replaceChildren(h('div', { class: 'm-screen' }, mHead('SETTINGS', 'Dial in the feel. Changes save automatically.'), ...secs));
   footSet(mStatus(`${touchUI ? 'Touch input detected' : 'Keyboard + mouse'}`), sbtn('Back', () => openMenu('home')));
 }
 
 function renderMaps() {
   const cards = MAPS.map((mapDef, i) => {
     const sel = mapDef.id === save.map;
-    return h('button', {
-      class: 'map-card' + (sel ? ' sel' : ''), type: 'button',
-      onclick: () => { setMap(mapDef.id); keepScroll(renderMaps); }
-    },
+    return h('button', { class: 'map-card' + (sel ? ' sel' : ''), type: 'button', onclick: () => { setMap(mapDef.id); keepScroll(renderMaps); } },
       h('span', { class: 'm-thumb t' + (i + 1) }, 'TRACK'),
       h('span', { class: 'm-info' }, h('b', {}, mapDef.name), h('span', {}, mapDef.desc)),
-      h('span', { class: 'm-go' }, sel ? 'SELECTED' : 'SELECT')
-    );
+      h('span', { class: 'm-go' }, sel ? 'SELECTED' : 'SELECT'));
   });
-  mLeft.replaceChildren(
-    h('div', { class: 'm-screen' },
-      mHead('PICK A MAP'),
-      h('p', { class: 'm-sub' }, 'Each map has its own grip, obstacles, and painted drift line.'),
-      h('div', { class: 'm-list' }, ...cards)
-    )
-  );
+  mLeft.replaceChildren(h('div', { class: 'm-screen' }, mHead('PICK A MAP'), h('p', { class: 'm-sub' }, 'Each map has its own grip, obstacles, and painted drift line.'), h('div', { class: 'm-list' }, ...cards)));
   footSet(mStatus(`Current: ${currentMap.name}`), sbtn('Back', () => openMenu('home')));
 }
 function renderModes() {
   mLeft.replaceChildren(
     h('div', { class: 'm-screen' },
-      mHead(h('span', {}, currentMap.name.toUpperCase().slice(0, 8) + ' '), h('span', {}, currentMap.name.toUpperCase().slice(8) || '')),
+      mHead(h('span', {}, currentMap.name.toUpperCase()), ''),
       h('p', { class: 'm-sub' }, 'How do you want to drive?'),
       h('div', { class: 'm-actions' },
         gbtn('▶', 'Solo drift', 'Freeform. Score pads, combos.', () => { mode = 'free'; reset(); closeMenu(); }, 'primary'),
@@ -1265,42 +1164,21 @@ function renderShop() {
     const d = CAR_DEFS[id], own = save.owned.includes(id);
     const equipped = id === save.car;
     const status = equipped ? 'Equipped' : own ? 'Owned' : '$' + d.price.toLocaleString();
-    return h('button', {
-      class: 'card' + (id === shopSel ? ' sel' : ''), type: 'button',
-      onclick: () => { shopSel = id; shopMsg = ''; setModel(d, paintOf(id), tuneOf(id)); keepScroll(renderShop); }
-    },
-      h('span', { class: 'cname' }, d.name),
-      h('span', { class: 'ctag' }, status),
-      h('span', { class: 'cdesc' }, d.tag)
-    );
+    return h('button', { class: 'card' + (id === shopSel ? ' sel' : ''), type: 'button', onclick: () => { shopSel = id; shopMsg = ''; setModel(d, paintOf(id), tuneOf(id)); keepScroll(renderShop); } },
+      h('span', { class: 'cname' }, d.name), h('span', { class: 'ctag' }, status), h('span', { class: 'cdesc' }, d.tag));
   });
-  mLeft.replaceChildren(
-    h('div', { class: 'm-screen' },
-      mHead('SHOP'),
-      h('p', { class: 'm-sub' }, 'Nine cars to choose from. Earn cash by banking drift points.'),
-      h('div', { class: 'm-list' }, ...cards)
-    )
-  );
+  mLeft.replaceChildren(h('div', { class: 'm-screen' }, mHead('SHOP'), h('p', { class: 'm-sub' }, 'Nine cars to choose from. Earn cash by banking drift points.'), h('div', { class: 'm-list' }, ...cards)));
   renderStats(sel, tuneOf(sel.id));
   updateMenuTopBar();
-
-  const act = owned
-    ? (sel.id === save.car ? sbtn('Equipped', () => {}, 'dis') : sbtn('Equip', () => { equip(sel.id); shopMsg = ''; keepScroll(renderShop); }, 'primary'))
-    : sbtn(`Buy - $${sel.price.toLocaleString()}`, () => buy(sel.id), 'primary');
+  const act = owned ? (sel.id === save.car ? sbtn('Equipped', () => {}, 'dis') : sbtn('Equip', () => { equip(sel.id); shopMsg = ''; keepScroll(renderShop); }, 'primary')) : sbtn(`Buy - $${sel.price.toLocaleString()}`, () => buy(sel.id), 'primary');
   const sell = owned && sel.price > 0 ? sbtn(`Sell - $${Math.floor(sel.price * 0.5).toLocaleString()}`, () => sellCar(sel.id), 'red') : null;
-  footSet(
-    mStatus(shopMsg || (owned ? (sel.id === save.car ? 'Currently equipped.' : 'Owned - equip or sell.') : `Price $${sel.price.toLocaleString()}`)),
-    sell,
-    act,
-    sbtn('Back', () => openMenu('home'))
-  );
+  footSet(mStatus(shopMsg || (owned ? (sel.id === save.car ? 'Currently equipped.' : 'Owned - equip or sell.') : `Price $${sel.price.toLocaleString()}`)), sell, act, sbtn('Back', () => openMenu('home')));
 }
 function buy(id) {
   const d = CAR_DEFS[id];
   if (save.cash < d.price) shopMsg = `Need $${(d.price - save.cash).toLocaleString()} more.`;
   else { save.cash -= d.price; save.owned.push(id); equip(id); shopMsg = d.name + ' is yours!'; }
-  keepScroll(renderShop);
-  updateMenuTopBar();
+  keepScroll(renderShop); updateMenuTopBar();
 }
 function sellCar(id) {
   const d = CAR_DEFS[id]; if (!save.owned.includes(id) || d.price <= 0) return;
@@ -1311,26 +1189,16 @@ function sellCar(id) {
   shopMsg = `${d.name} sold for $${price.toLocaleString()}.`;
   persist(); keepScroll(renderShop); updateMenuTopBar();
 }
-
 function renderStats(def, t) {
   const s = derive(TIERS[tier], def, t), st = derive(TIERS[tier], def, defaultTune(def));
   const rows = Object.entries(s.ratings).map(([k, v]) => {
     const d = Math.round((v - st.ratings[k]) * 100);
     return h('div', { class: 'stat' },
-      h('div', { class: 'slab' },
-        h('span', {}, k),
-        h('span', { class: 'delta ' + (d > 0 ? 'up' : d < 0 ? 'dn' : '') }, d === 0 ? '' : (d > 0 ? '+' : '−') + Math.abs(d))),
+      h('div', { class: 'slab' }, h('span', {}, k), h('span', { class: 'delta ' + (d > 0 ? 'up' : d < 0 ? 'dn' : '') }, d === 0 ? '' : (d > 0 ? '+' : '−') + Math.abs(d))),
       h('div', { class: 'bar' }, h('i', { style: `width:${Math.round(v * 100)}%` })));
   });
-  mRight.replaceChildren(
-    h('h3', {}, def.name),
-    h('div', { class: 'dim' }, `Class ${tier + 1} - ${TIERS[tier].name}`),
-    ...rows,
-    h('div', { class: 'bal' }, 'Balance: ', h('b', {}, s.balance)),
-    h('div', { class: 'dim', style: 'margin-top:6px' }, `${Math.round(s.top * 3.6)} km/h top speed`)
-  );
+  mRight.replaceChildren(h('h3', {}, def.name), h('div', { class: 'dim' }, `Class ${tier + 1} - ${TIERS[tier].name}`), ...rows, h('div', { class: 'bal' }, 'Balance: ', h('b', {}, s.balance)), h('div', { class: 'dim', style: 'margin-top:6px' }, `${Math.round(s.top * 3.6)} km/h top speed`));
 }
-
 const fmt = (it, v) => (v > 0 && it.min < 0 ? '+' : '') + v.toFixed(it.step < 0.1 ? 2 : it.step < 1 ? 1 : 0) + it.unit;
 function setTune(key, v) {
   tune[key] = v; save.tune[carDef.id] = { ...tune }; persist();
@@ -1349,37 +1217,20 @@ function control(it) {
 function renderEdit() {
   const swatches = h('div', { class: 'swatches' });
   PAINTS.forEach(c => {
-    const b = h('button', { class: 'sw' + (paintOf(carDef.id) === c ? ' sel' : ''), type: 'button', 'aria-label': 'Paint ' + hex6(c), style: 'background:' + hex6(c), onclick: () => {
-      save.paint[carDef.id] = c; repaint(model, c); persist(); swatches.querySelectorAll('.sw').forEach(x => x.classList.toggle('sel', x === b));
-    } });
+    const b = h('button', { class: 'sw' + (paintOf(carDef.id) === c ? ' sel' : ''), type: 'button', 'aria-label': 'Paint ' + hex6(c), style: 'background:' + hex6(c), onclick: () => { save.paint[carDef.id] = c; repaint(model, c); persist(); swatches.querySelectorAll('.sw').forEach(x => x.classList.toggle('sel', x === b)); } });
     swatches.append(b);
   });
-  const presets = h('div', { class: 'chips' }, ...Object.keys(PRESETS).map(name => h('button', { class: 'chip', type: 'button', onclick: () => {
-    tune = { ...defaultTune(carDef), ...PRESETS[name]() }; save.tune[carDef.id] = { ...tune }; persist(); applyModel(tune); recalc(); SUS.hv -= 0.2; keepScroll(renderEdit);
-  } }, name)));
-  const carChips = h('div', { class: 'chips' },
-    ...save.owned.map(id => h('button', { class: 'chip' + (id === save.car ? ' sel' : ''), type: 'button', onclick: () => { equip(id); renderEdit(); } }, CAR_DEFS[id].name)));
-
+  const presets = h('div', { class: 'chips' }, ...Object.keys(PRESETS).map(name => h('button', { class: 'chip', type: 'button', onclick: () => { tune = { ...defaultTune(carDef), ...PRESETS[name]() }; save.tune[carDef.id] = { ...tune }; persist(); applyModel(tune); recalc(); SUS.hv -= 0.2; keepScroll(renderEdit); } }, name)));
+  const carChips = h('div', { class: 'chips' }, ...save.owned.map(id => h('button', { class: 'chip' + (id === save.car ? ' sel' : ''), type: 'button', onclick: () => { equip(id); renderEdit(); } }, CAR_DEFS[id].name)));
   const secs = [
     mSec('Car', carChips),
     mSec('Paint', swatches),
     mSec('Quick presets', presets),
     ...TUNE_GROUPS.map(g => mSec(g.title, ...g.items.map(control))),
   ];
-
-  mLeft.replaceChildren(
-    h('div', { class: 'm-screen' },
-      mHead('GARAGE'),
-      h('p', { class: 'm-sub' }, 'Tune the setup and paint the livery. Everything is measured against the stock tune, so a clean car is a fair baseline.'),
-      ...secs
-    )
-  );
+  mLeft.replaceChildren(h('div', { class: 'm-screen' }, mHead('GARAGE'), h('p', { class: 'm-sub' }, 'Tune the setup and paint the livery.'), ...secs));
   renderStats(carDef, tune);
-  footSet(
-    mStatus(`${carDef.name} - ${save.owned.length} car${save.owned.length === 1 ? '' : 's'} owned`),
-    sbtn('Stock', () => { tune = defaultTune(carDef); save.tune[carDef.id] = { ...tune }; persist(); applyModel(tune); recalc(); keepScroll(renderEdit); }, 'blue'),
-    sbtn('Back', () => openMenu('home'))
-  );
+  footSet(mStatus(`${carDef.name} - ${save.owned.length} car${save.owned.length === 1 ? '' : 's'} owned`), sbtn('Stock', () => { tune = defaultTune(carDef); save.tune[carDef.id] = { ...tune }; persist(); applyModel(tune); recalc(); keepScroll(renderEdit); }, 'blue'), sbtn('Back', () => openMenu('home')));
 }
 
 const mpCfg = { mode: 'duel', n: 2, first: 3, cls: 1, cars: [save.car, 'corsa', 'muscle', 'rallye'], ...(save.mp || {}) };
@@ -1392,93 +1243,41 @@ function renderMpSetup() {
   const modes = [
     ['duel', 'Side-Hit Duel', 'Ram the side of a rival car to score. Head-ons and nudges do not count. First to the target wins.'],
     ['snake', 'Orb Snake', 'Grab orbs to grow a tail of car copies. Hit someone else tail and you are out. Last car rolling wins the round.']
-  ].map(([id, name, desc]) => h('button', {
-    class: 'card' + (cfg.mode === id ? ' sel' : ''), type: 'button',
-    onclick: () => { cfg.mode = id; cfg.first = id === 'duel' ? 3 : 2; saveMp(); again(); }
-  },
-    h('span', { class: 'cname' }, name),
-    h('span', { class: 'ctag' }, cfg.mode === id ? 'Selected' : 'Choose'),
-    h('span', { class: 'cdesc' }, desc)));
-
-  const carBtn = (i, d) => h('button', {
-    class: 'gbtn sm', type: 'button',
-    style: 'padding:6px 10px;min-width:36px;justify-content:center',
-    'aria-label': `${PNAMES[i]} ${d < 0 ? 'previous' : 'next'} car`,
-    onclick: () => {
-      const k = CAR_ORDER.indexOf(cfg.cars[i]);
-      cfg.cars[i] = CAR_ORDER[(k + d + CAR_ORDER.length) % CAR_ORDER.length];
-      saveMp(); again();
-    }
-  }, h('span', { class: 'tx' }, h('span', {}, d < 0 ? '<' : '>')));
-
+  ].map(([id, name, desc]) => h('button', { class: 'card' + (cfg.mode === id ? ' sel' : ''), type: 'button', onclick: () => { cfg.mode = id; cfg.first = id === 'duel' ? 3 : 2; saveMp(); again(); } },
+    h('span', { class: 'cname' }, name), h('span', { class: 'ctag' }, cfg.mode === id ? 'Selected' : 'Choose'), h('span', { class: 'cdesc' }, desc)));
+  const carBtn = (i, d) => h('button', { class: 'gbtn sm', type: 'button', style: 'padding:6px 10px;min-width:36px;justify-content:center', 'aria-label': `${PNAMES[i]} ${d < 0 ? 'previous' : 'next'} car`, onclick: () => { const k = CAR_ORDER.indexOf(cfg.cars[i]); cfg.cars[i] = CAR_ORDER[(k + d + CAR_ORDER.length) % CAR_ORDER.length]; saveMp(); again(); } }, h('span', { class: 'tx' }, h('span', {}, d < 0 ? '<' : '>')));
   const pads = padList().length;
   const players = Array.from({ length: cfg.n }, (_, i) => h('div', { class: 'prow' },
     h('i', { class: 'pdot', style: 'background:' + hex6(PCOLORS[i]) }),
-    h('b', {}, PNAMES[i]),
-    carBtn(i, -1),
-    h('span', { class: 'pcar' }, CAR_DEFS[cfg.cars[i]].name),
-    carBtn(i, 1),
-    h('span', { class: 'pkeys' }, KEYMAPS[i].name + (pads > i ? '  -  gamepad connected' : ''))
-  ));
-
+    h('b', {}, PNAMES[i]), carBtn(i, -1), h('span', { class: 'pcar' }, CAR_DEFS[cfg.cars[i]].name), carBtn(i, 1),
+    h('span', { class: 'pkeys' }, KEYMAPS[i].name + (pads > i ? '  -  gamepad connected' : ''))));
   const secs = [
     mSec('Game mode', ...modes),
     mSec('Match',
       segRow('Players', 'Split-screen on one device.', ['2', '3', '4'], () => cfg.n - 2, i => { cfg.n = i + 2; saveMp(); again(); }),
       segRow('First to', 'Rounds needed to win.', ['1', '2', '3'], () => cfg.first - 1, i => { cfg.first = i + 1; saveMp(); }),
-      segRow('Speed class', 'Same stats for everybody - it stays fair.', TIERS.map((t, i) => `${i + 1} - ${t.name}`), () => cfg.cls, i => { cfg.cls = i; saveMp(); })
-    ),
-    mSec('Players', ...players,
-      h('div', { class: 'hint', style: 'margin-top:10px;font-size:12px;opacity:.65;line-height:1.45' },
-        touchUI
-          ? 'On a phone, P1 uses tilt or the on-screen zones. Connect Bluetooth gamepads for the others.'
-          : 'Share the keyboard, or plug in gamepads (stick steers, triggers drive, A is handbrake).'))
+      segRow('Speed class', 'Same stats for everybody - it stays fair.', TIERS.map((t, i) => `${i + 1} - ${t.name}`), () => cfg.cls, i => { cfg.cls = i; saveMp(); })),
+    mSec('Players', ...players, h('div', { class: 'hint', style: 'margin-top:10px;font-size:12px;opacity:.65;line-height:1.45' }, touchUI ? 'On a phone, P1 uses tilt or the on-screen zones. Connect Bluetooth gamepads for the others.' : 'Share the keyboard, or plug in gamepads.'))
   ];
-
-  mLeft.replaceChildren(
-    h('div', { class: 'm-screen' },
-      mHead('MULTIPLAYER'),
-      h('p', { class: 'm-sub' }, 'Split-screen for two to four players on one device. Controls for each player stay on screen during the match.'),
-      ...secs
-    )
-  );
-  footSet(
-    mStatus(`${cfg.n} players - first to ${cfg.first} - class ${cfg.cls + 1}`),
-    sbtn('Back', () => openMenu('modes')),
-    sbtn('Start', startMP, 'primary')
-  );
+  mLeft.replaceChildren(h('div', { class: 'm-screen' }, mHead('MULTIPLAYER'), h('p', { class: 'm-sub' }, 'Split-screen for two to four players on one device.'), ...secs));
+  footSet(mStatus(`${cfg.n} players - first to ${cfg.first} - class ${cfg.cls + 1}`), sbtn('Back', () => openMenu('modes')), sbtn('Start', startMP, 'primary'));
 }
-
 function renderPause() {
-  mLeft.replaceChildren(
-    h('div', { class: 'm-overlay' },
-      h('div', { class: 'pause-card' },
-        h('h1', { class: 'm-title' }, 'PAUSED'),
-        h('p', { class: 'm-sub', style: 'text-align:left;max-width:none' }, 'Esc to resume.'),
-        h('div', { class: 'm-actions' },
-          gbtn('▶', 'Resume', null, closeMenu, 'primary'),
-          gbtn('↻', 'Restart match', null, startMP),
-          gbtn('♪', save.set.mute ? 'Sound: off' : 'Sound: on', null, () => { setMute(!save.set.mute); renderPause(); }, 'blue'),
-          gbtn('✕', 'Quit to menu', null, quitMP, 'red')
-        )
-      )
-    )
-  );
+  mLeft.replaceChildren(h('div', { class: 'm-overlay' }, h('div', { class: 'pause-card' },
+    h('h1', { class: 'm-title' }, 'PAUSED'),
+    h('p', { class: 'm-sub', style: 'text-align:left;max-width:none' }, 'Esc to resume.'),
+    h('div', { class: 'm-actions' },
+      gbtn('▶', 'Resume', null, closeMenu, 'primary'),
+      gbtn('↻', 'Restart match', null, startMP),
+      gbtn('♪', save.set.mute ? 'Sound: off' : 'Sound: on', null, () => { setMute(!save.set.mute); renderPause(); }, 'blue'),
+      gbtn('✕', 'Quit to menu', null, quitMP, 'red')))));
 }
 function renderMpEnd() {
   const w = mp ? mp.m.winner : 0, sc = mp ? mp.m.scores : [];
-  mLeft.replaceChildren(
-    h('div', { class: 'm-overlay' },
-      h('div', { class: 'pause-card' },
-        h('h1', { class: 'm-title', style: 'color:' + hex6(PCOLORS[w]) }, PNAMES[w] + ' WINS'),
-        h('p', { class: 'm-sub', style: 'text-align:left;max-width:none' }, sc.map((v, i) => `${PNAMES[i]}  ${v}`).join('   -   ')),
-        h('div', { class: 'm-actions' },
-          gbtn('↻', 'Rematch', null, startMP, 'primary'),
-          gbtn('✕', 'Quit to menu', null, quitMP, 'red')
-        )
-      )
-    )
-  );
+  mLeft.replaceChildren(h('div', { class: 'm-overlay' }, h('div', { class: 'pause-card' },
+    h('h1', { class: 'm-title', style: 'color:' + hex6(PCOLORS[w]) }, PNAMES[w] + ' WINS'),
+    h('p', { class: 'm-sub', style: 'text-align:left;max-width:none' }, sc.map((v, i) => `${PNAMES[i]}  ${v}`).join('   -   ')),
+    h('div', { class: 'm-actions' }, gbtn('↻', 'Rematch', null, startMP, 'primary'), gbtn('✕', 'Quit to menu', null, quitMP, 'red')))));
 }
 
 /* ================= INPUT ================= */
@@ -1524,7 +1323,6 @@ addEventListener('pointerup', () => { drag = null; });
 addEventListener('wheel', e => { if (menu && !e.target.closest('#mLeft, #mRight, #mTop, #mFoot')) orbitDist = clamp(orbitDist + e.deltaY * 0.005, 4.5, 12); }, { passive: true });
 
 const D2R_ = Math.PI / 180;
-
 $('mCog').addEventListener('click', () => { if (menu === 'settings') openMenu('home'); else openMenu('settings'); });
 
 const dial = (() => {
@@ -1604,7 +1402,6 @@ function showTip(text) {
   el.textContent = text || (save.set.ctrl === 'tilt' ? 'Tilt to steer - Left half is BRAKE - Right half is GAS' : 'Steer - GAS - BRAKE');
   el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
 }
-
 const holders = [];
 function hold(el, apply, onDown) {
   const ids = new Set(), set = () => apply(ids.size > 0);
@@ -1632,12 +1429,10 @@ addEventListener('pointerdown', e => { if (e.pointerType === 'touch' && !touchUI
 const reCal = () => { calibrateNext = true; };
 addEventListener('orientationchange', reCal);
 if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', reCal);
-
 for (const el of document.querySelectorAll('#ui button')) el.addEventListener('mousedown', e => e.preventDefault());
 $('btnSettings').addEventListener('click', toggleMenu);
 $('photoX').addEventListener('click', () => setPhoto(false));
 document.querySelectorAll('#classes .cls').forEach(b => b.addEventListener('click', () => setTier(+b.dataset.i)));
-
 function touchHud() {
   if (touchUI) {
     $('pGas').classList.toggle('down', !!touch.gas); $('pBrake').classList.toggle('down', !!touch.brake);
@@ -1705,7 +1500,7 @@ let smokeAcc = 0;
 const ghost = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.0, 4.3), new THREE.MeshBasicMaterial({ color: 0x66ffee, transparent: true, opacity: 0.25, depthWrite: false }));
 ghost.visible = false; scene.add(ghost);
 
-/* ================= PHYSICS — much more drifty ================= */
+/* ================= PHYSICS (drifty) ================= */
 function step(dt) {
   const s = stats;
   const thr = inGas(), brk = inBrake(), hb = !!inHB();
@@ -1715,12 +1510,10 @@ function step(dt) {
   let vf = S.vx * fx + S.vz * fz, vl = S.vx * rx + S.vz * rz;
   const sp = Math.hypot(vf, vl), slip = Math.atan2(vl, Math.abs(vf) + 0.001);
 
-  // steering with a stronger counter-steer assist while sliding
   const inp = inSteer() * (brk && vf > 5 ? 1 - s.brakeUnder : 1);
   const assist = -0.42 * clamp(vl / 10, -1, 1) * S.loose;
   S.steer += (clamp(inp + assist, -1, 1) - S.steer) * Math.min(1, dt * (inp ? 10 : 14));
 
-  // longitudinal (with an easier slide entry)
   const bst = thr && inBoost() && boost > 0.02 ? 1 : 0;
   if (bst) boost = Math.max(0, boost - dt * 0.25); else if (sp > 9 && Math.abs(slip) > 0.28) boost = Math.min(1, boost + dt * 0.12);
   if (thr) vf += s.power * (bst ? 1.9 : 1) * (1 - clamp(vf / (s.top * (bst ? 1.25 : 1)), 0, 1.2)) * dt * (vf < 0 ? 2 : 1);
@@ -1729,17 +1522,14 @@ function step(dt) {
   if (!thr && !brk && Math.abs(vf) < 3) vf *= Math.exp(-2.5 * dt);
   if (hb) vf *= Math.exp(-0.42 * dt);
 
-  // trigger a slide much more easily now
   let want = hb ? 1 : (thr && vf > 8 && (Math.abs(S.steer) > 0.20 * s.entry || Math.abs(slip) > 0.14 * s.entry)) ? 1 : 0;
   if (brk && sp > 9 && s.brakeLoose > 0 && Math.abs(S.steer) > 0.15) want = Math.max(want, s.brakeLoose * 0.9);
   S.loose += (want - S.loose) * Math.min(1, dt * (want ? 14 : 4));
 
-  // lower grip in drift, higher drift number
   const gripF = s.grip * 0.68 * mapMul;
   const driftF = s.drift * 1.22 * mapMul;
   vl *= Math.exp(-lerp(gripF, driftF * (hb ? 0.5 : 1), S.loose) * (1 + s.aeroK * sp * sp) * (wet ? s.wetMul : 1) * dt);
 
-  // yaw (stronger when loose)
   const dir = vf >= -1 ? 1 : -1;
   const sf = Math.min(1, sp / 6) / (1 + sp / (s.top * 1.5));
   const yaw = S.steer * s.steer * sf * dir * (1 + 0.45 * S.loose) * (hb ? 1.35 : 1);
@@ -1776,7 +1566,7 @@ function crash(impact) {
   pending = 0; driftT = 0; gap = 0;
 }
 
-/* ================= SCORING / HUD ================= */
+/* ================= SCORING ================= */
 const toastEl = $('toast');
 function toast(t, bad) {
   toastEl.textContent = t; toastEl.className = bad ? 'bad' : '';
@@ -1817,7 +1607,7 @@ function scoring(dt) {
   if (drifting) {
     gap = 0; driftT += dt; mult = 1 + Math.min(driftT, 12) * 0.5;
     let rate = S.sp * Math.abs(S.slip) * 6.5 * mult * (1 + 0.5 * (S.bst || 0));
-    const z = ZONES[zoneI % ZONES.length];
+    const z = ZONES.length ? ZONES[zoneI % ZONES.length] : null;
     if (z && Math.hypot(S.x - z.x, S.z - z.z) < z.r && Math.abs(S.slip) > 0.30 && S.sp > 10) {
       rate *= 3; zoneT += dt;
       if (zoneT > 1.5) { pending += 400 * mult; toast('ZONE CLEARED'); zoneI = (zoneI + 1) % ZONES.length; zoneT = 0; if (++zonesCleared >= 3) unlock('zone3'); }
@@ -1841,7 +1631,6 @@ function scoring(dt) {
   if (!drifting && pending > 0 && (gap += dt) > 4) bank(1);
   if (pending > 0 && S.sp > 5 && Math.hypot(S.x - PAD.x, S.z - PAD.z) < PAD.r) bank(1.25, 'PAD BANK');
 }
-/* ---- RACE MODE ---- */
 function scoringRace(dt) {
   if (raceState.done) return;
   const cp = raceState.cp;
@@ -1863,15 +1652,17 @@ function hud() {
   if (mode === 'race') {
     const cp = raceState.cp, gates = raceState.gates;
     const next = gates[Math.min(cp, gates.length - 1)];
-    $('obj').textContent = `RACE  CP ${Math.min(cp, gates.length)}/${gates.length}  ${arrow(next.x, next.z)} ${Math.round(Math.hypot(next.x - S.x, next.z - S.z))}m` +
-      (raceState.active ? `  ${raceState.time.toFixed(2)}s` : '  cross gate 1 to start') +
-      (raceBest ? `  best ${raceBest.toFixed(2)}s` : '');
+    if (next) {
+      $('obj').textContent = `RACE  CP ${Math.min(cp, gates.length)}/${gates.length}  ${arrow(next.x, next.z)} ${Math.round(Math.hypot(next.x - S.x, next.z - S.z))}m` +
+        (raceState.active ? `  ${raceState.time.toFixed(2)}s` : '  cross gate 1 to start') +
+        (raceBest ? `  best ${raceBest.toFixed(2)}s` : '');
+    } else $('obj').textContent = 'RACE  FINISHED';
     $('score').textContent = raceState.active ? raceState.time.toFixed(2) : '0';
     $('mult').textContent = '';
   } else {
-    const hz = ZONES[zoneI % ZONES.length];
+    const hz = ZONES.length ? ZONES[zoneI % ZONES.length] : null;
     $('obj').textContent = (mode === 'timed' ? `${Math.max(0, Math.ceil(timeLeft))}s · ${runScore} pts · ` : '') +
-      `Gold zone ${arrow(hz.x, hz.z)} ${Math.round(Math.hypot(hz.x - S.x, hz.z - S.z))}m · Bank pad ${arrow(PAD.x, PAD.z)} ${Math.round(Math.hypot(PAD.x - S.x, PAD.z - S.z))}m`;
+      (hz ? `Gold zone ${arrow(hz.x, hz.z)} ${Math.round(Math.hypot(hz.x - S.x, hz.z - S.z))}m · Bank pad ${arrow(PAD.x, PAD.z)} ${Math.round(Math.hypot(PAD.x - S.x, PAD.z - S.z))}m` : '');
     $('score').textContent = Math.floor(pending);
     $('mult').textContent = pending > 0 ? 'x' + mult.toFixed(1) + (gap > 0 ? '  bank in ' + Math.max(0, 4 - gap).toFixed(1) + 's' : '') : '';
   }
@@ -1935,7 +1726,6 @@ function startMP() {
   buildMpHud();
   carGroup.visible = false; ghost.visible = false;
   if (raceGateGroup) raceGateGroup.visible = false;
-  if (trackLineGroup) trackLineGroup.visible = true;
   orbMesh.visible = cfg.mode === 'snake'; mpRing.visible = true;
   pending = 0; mult = 1; releaseTouch();
   document.body.classList.add('mp'); mpEl.classList.remove('off');
@@ -1962,8 +1752,7 @@ function buildMpHud() {
   for (let i = 0; i < mp.cfg.n; i++) {
     const el = h('div', { class: 'pv', 'data-i': String(i) },
       h('div', { class: 'pchip', style: 'background:' + hex6(PCOLORS[i]) }, PNAMES[i]),
-      h('div', { class: 'pips' }),
-      h('div', { class: 'psub' }),
+      h('div', { class: 'pips' }), h('div', { class: 'psub' }),
       h('div', { class: 'phint' }, KEYMAPS[i].name + (i === 0 && touchUI ? '  -  or tilt / zones' : '')),
       h('div', { class: 'pout' }, 'OUT'));
     mpEl.append(el);
@@ -1997,7 +1786,6 @@ function mpHudUpdate() {
       mp.board.replaceChildren(h('div', { class: 'bt' }, 'SCORE'), ...m.cars.map((c, i) => h('div', { class: 'brow' }, h('i', { class: 'pdot', style: 'background:' + hex6(PCOLORS[i]) }), `${PNAMES[i]}  ${'●'.repeat(m.scores[i])}${'○'.repeat(Math.max(0, m.first - m.scores[i]))}`, c.alive ? '' : '  OUT'))); }
   }
 }
-
 function mpInput(i) {
   const km = KEYMAPS[i], any = a => a.some(k => keys[k]);
   let gas = any(km.gas), brake = any(km.brake), hb = any(km.hb), steer = (any(km.left) ? 1 : 0) - (any(km.right) ? 1 : 0);
@@ -2013,7 +1801,6 @@ function mpInput(i) {
   }
   return { gas, brake, hb, steer: clamp(steer, -1, 1) };
 }
-
 function handleMpEvents(evs) {
   let hitS = false, pick = false;
   const m = mp.m, col = i => hex6(PCOLORS[i]);
@@ -2033,7 +1820,6 @@ function handleMpEvents(evs) {
   if (hitS && mpSfxCd <= 0) { sfx('hit'); mpSfxCd = 0.12; }
   if (pick) sfx('pickup');
 }
-
 function mpSync(dt) {
   const m = mp.m, R = arenaR(m);
   mpRing.scale.set(R, 1, R);
@@ -2135,7 +1921,6 @@ function visuals(dt) {
     if (!inMenu && !photo) w.roll.rotation.x += (S.vf / w.R) * dt;
   }
   if (m.swSpin) m.swSpin.rotation.z = inMenu ? 0 : -S.steer * 2.3;
-
   if (m.driverRig) m.driverRig.visible = !inMenu;
   if (m.standFig) {
     m.standFig.visible = (menu === 'edit');
