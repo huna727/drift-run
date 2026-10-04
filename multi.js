@@ -1,9 +1,8 @@
-// Split-screen game logic: Side-Hit Duel and Orb Snake. Pure JS (no three.js), so it can be unit-tested.
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 
-export const MP_R = { duel: 100, snake: 112 };      // arena radius per mode
-export const ISL = 38, CR = 1.6, CRAD = 0.95;       // island radius, wall clearance, car circle radius
+export const MP_R = { duel: 100, snake: 112 };
+export const ISL = 38, CR = 1.6, CRAD = 0.95;
 export const MAX_SEG = 14, SEG_GAP = 5.2, MAX_ORBS = 110, BASE_ORBS = 45;
 export const PCOLORS = [0xff4d6d, 0x2f7dff, 0xffc21a, 0x2fe3a0];
 export const PNAMES = ['P1', 'P2', 'P3', 'P4'];
@@ -14,7 +13,6 @@ export const KEYMAPS = [
   { name: 'T F G H  +  R  (or numpad)', gas: ['KeyT', 'Numpad8'], brake: ['KeyG', 'Numpad5'], left: ['KeyF', 'Numpad4'], right: ['KeyH', 'Numpad6'], hb: ['KeyR', 'Numpad0'] },
 ];
 
-/** CSS-pixel rectangles (origin top-left) for n split-screen views */
 export function layout(n, W, H) {
   if (n <= 1) return [{ x: 0, y: 0, w: W, h: H }];
   if (n === 2) return W >= H * 0.9
@@ -39,36 +37,34 @@ export function susStep(S, b, thr, brk, rollT, dt) {
   }
   S.pitch = clamp(S.pitch, -0.25, 0.25); S.roll = clamp(S.roll, -0.3, 0.3); S.heave = clamp(S.heave, -0.15, 0.15);
 }
-
 export function makeCar(i, n, R, st, mode) {
   const p = spawnPose(i, n, R);
   const c = { i, x: p.x, z: p.z, h: p.h, vx: 0, vz: 0, steer: 0, loose: 0, sp: 0, slip: 0, vf: 0, yaw: 0, thr: 0, brk: 0,
     alive: true, st, segs: 0, orbs: 0, trail: [], camH: p.h, sus: makeSus(), spin: 0, pose: p };
-  if (mode === 'snake') for (let d = 100; d >= 0; d -= 0.35) { // seed the trail along the arc behind the car
+  if (mode === 'snake') for (let d = 100; d >= 0; d -= 0.35) {
     const a = p.a - d / p.r; c.trail.push({ x: Math.sin(a) * p.r, z: Math.cos(a) * p.r, h: a + Math.PI / 2 });
   }
   return c;
 }
-
-/** same driving model as solo mode (no boost / pads) */
 export function stepCar(c, inp, dt) {
   const s = c.st, thr = inp.gas ? 1 : 0, brk = inp.brake ? 1 : 0, hb = !!inp.hb;
   const fx = Math.sin(c.h), fz = Math.cos(c.h), rx = -Math.cos(c.h), rz = Math.sin(c.h);
   let vf = c.vx * fx + c.vz * fz, vl = c.vx * rx + c.vz * rz;
   const sp = Math.hypot(vf, vl), slip = Math.atan2(vl, Math.abs(vf) + 0.001);
-  const si = (inp.steer || 0) * (brk && vf > 5 ? 1 - s.brakeUnder : 1), assist = -0.3 * clamp(vl / 12, -1, 1) * c.loose;
-  c.steer += (clamp(si + assist, -1, 1) - c.steer) * Math.min(1, dt * (si ? 8 : 12));
+  const si = (inp.steer || 0) * (brk && vf > 5 ? 1 - s.brakeUnder : 1), assist = -0.4 * clamp(vl / 10, -1, 1) * c.loose;
+  c.steer += (clamp(si + assist, -1, 1) - c.steer) * Math.min(1, dt * (si ? 10 : 14));
   if (thr) vf += s.power * (1 - clamp(vf / s.top, 0, 1.2)) * dt * (vf < 0 ? 2 : 1);
   if (brk) vf = vf > 0.5 ? vf - 38 * dt : Math.max(-12, vf - 14 * dt);
   vf *= Math.exp(-((thr ? 0.09 : 0.25) + s.dragK) * dt);
   if (!thr && !brk && Math.abs(vf) < 3) vf *= Math.exp(-2.5 * dt);
-  if (hb) vf *= Math.exp(-0.45 * dt);
-  let want = hb ? 1 : (thr && vf > 13 && (Math.abs(c.steer) > 0.35 * s.entry || Math.abs(slip) > 0.25 * s.entry)) ? 1 : 0;
-  if (brk && sp > 10 && s.brakeLoose > 0 && Math.abs(c.steer) > 0.2) want = Math.max(want, s.brakeLoose * 0.8);
-  c.loose += (want - c.loose) * Math.min(1, dt * (want ? 9 : 5));
-  vl *= Math.exp(-lerp(s.grip, s.drift * (hb ? 0.65 : 1), c.loose) * (1 + s.aeroK * sp * sp) * dt);
+  if (hb) vf *= Math.exp(-0.42 * dt);
+  let want = hb ? 1 : (thr && vf > 8 && (Math.abs(c.steer) > 0.20 * s.entry || Math.abs(slip) > 0.14 * s.entry)) ? 1 : 0;
+  if (brk && sp > 9 && s.brakeLoose > 0 && Math.abs(c.steer) > 0.15) want = Math.max(want, s.brakeLoose * 0.9);
+  c.loose += (want - c.loose) * Math.min(1, dt * (want ? 14 : 4));
+  const gripF = s.grip * 0.68, driftF = s.drift * 1.22;
+  vl *= Math.exp(-lerp(gripF, driftF * (hb ? 0.5 : 1), c.loose) * (1 + s.aeroK * sp * sp) * dt);
   const dir = vf >= -1 ? 1 : -1, sf = Math.min(1, sp / 6) / (1 + sp / (s.top * 1.5));
-  const yaw = c.steer * s.steer * sf * dir * (1 + 0.3 * c.loose) * (hb ? 1.25 : 1);
+  const yaw = c.steer * s.steer * sf * dir * (1 + 0.45 * c.loose) * (hb ? 1.35 : 1);
   c.vx = fx * vf + rx * vl; c.vz = fz * vf + rz * vl;
   c.h += yaw * dt; c.x += c.vx * dt; c.z += c.vz * dt;
   c.sp = sp; c.slip = slip; c.vf = vf; c.yaw = yaw; c.thr = thr; c.brk = brk; c.hb = hb;
@@ -85,18 +81,16 @@ function hitWall(c, nx, nz, pen, out) {
 export function worldCollide(c, R, obst, out) {
   const d = Math.hypot(c.x, c.z) || 1;
   if (d > R - CR) hitWall(c, -c.x / d, -c.z / d, d - (R - CR), out);
-  if (d < ISL + CR) hitWall(c, c.x / d, c.z / d, ISL + CR - d, out);
+  if (ISL > 0 && d < ISL + CR) hitWall(c, c.x / d, c.z / d, ISL + CR - d, out);
   for (const o of obst) {
     const dx = c.x - o.x, dz = c.z - o.z, dd = Math.hypot(dx, dz) || 1;
     if (dd < o.r + CR) hitWall(c, dx / dd, dz / dd, o.r + CR - dd, out);
   }
 }
-
 export const circles = c => {
   const fx = Math.sin(c.h), fz = Math.cos(c.h);
   return [1.35, 0, -1.35].map(o => ({ x: c.x + fx * o, z: c.z + fz * o }));
 };
-/** car-vs-car bounce. In a duel it also reports "side hits": A's nose into B's flank. */
 export function collideCars(cars, out, duel) {
   for (let i = 0; i < cars.length; i++) for (let j = i + 1; j < cars.length; j++) {
     const A = cars[i], B = cars[j];
@@ -126,12 +120,10 @@ export function collideCars(cars, out, duel) {
   }
 }
 
-/* ---------- snake: trail, tail cars, orbs ---------- */
 export function trailPush(c) {
   const l = c.trail[c.trail.length - 1];
   if (!l || Math.hypot(c.x - l.x, c.z - l.z) > 0.35) { c.trail.push({ x: c.x, z: c.z, h: c.h }); if (c.trail.length > 520) c.trail.shift(); }
 }
-/** positions of the tail cars (k = 1..segs), each headed toward the car ahead of it */
 export function segmentPoses(c) {
   const out = [], t = c.trail;
   let px = c.x, pz = c.z, acc = 0, target = SEG_GAP;
@@ -158,7 +150,6 @@ export function addOrb(m, x, z) {
 export function randomOrb(m) {
   const R = arenaR(m) * 0.9, minR = ISL + 6;
   if (R <= minR) { addOrb(m, 0, 0); return; }
-  // try a few spots, keep it away from any live car so orbs don't pop in on top of someone
   for (let k = 0; k < 20; k++) {
     const a = Math.random() * Math.PI * 2, r = minR + Math.random() * (R - minR);
     const x = Math.sin(a) * r, z = Math.cos(a) * r;
@@ -167,13 +158,10 @@ export function randomOrb(m) {
     if (clear || k === 19) { addOrb(m, x, z); return; }
   }
 }
-
-/* ---------- match flow ---------- */
 export const arenaR = m => {
   const R0 = MP_R[m.mode], t0 = m.mode === 'duel' ? 45 : 25, t1 = m.mode === 'duel' ? 75 : 90;
   return R0 * lerp(1, 0.6, clamp((m.time - t0) / t1, 0, 1));
 };
-
 export function createMatch(cfg, stats, obst) {
   const m = { mode: cfg.mode, n: cfg.n, first: cfg.first, stats, obst, cars: [], scores: new Array(cfg.n).fill(0),
     orbs: Array.from({ length: MAX_ORBS }, () => ({ on: false, x: 0, z: 0, hue: 0, born: 0 })),
@@ -195,8 +183,6 @@ function endRound(m, winner, out) {
   if (winner >= 0) m.scores[winner]++;
   out.push({ type: 'roundEnd', winner });
 }
-
-/** inputs[i] = {gas, brake, hb, steer}. Returns a list of events for the UI / audio. */
 export function updateMatch(m, inputs, dt) {
   const out = [], none = { gas: 0, brake: 0, hb: 0, steer: 0 };
   if (m.phase === 'count') {
@@ -219,7 +205,7 @@ export function updateMatch(m, inputs, dt) {
     }
     collideCars(m.cars, out, m.mode === 'duel' && playing);
   }
-  if (!playing) { m.t -= dt; if (m.t <= 0) { // after the round-end pause
+  if (!playing) { m.t -= dt; if (m.t <= 0) {
       const top = m.scores.findIndex(v => v >= m.first);
       if (top >= 0) { m.phase = 'matchEnd'; m.winner = top; out.push({ type: 'matchEnd', winner: top }); }
       else { m.round++; startRound(m, out); }
@@ -230,7 +216,6 @@ export function updateMatch(m, inputs, dt) {
     const ev = out.find(e => e.type === 'side');
     if (ev) { out.push({ type: 'score', attacker: ev.attacker.i, victim: ev.victim.i }); endRound(m, ev.attacker.i, out); }
   } else {
-    // pick up orbs
     for (const c of m.cars) if (c.alive) {
       const f = circles(c);
       for (const o of m.orbs) if (o.on) {
@@ -241,7 +226,6 @@ export function updateMatch(m, inputs, dt) {
     let on = m.orbs.filter(o => o.on).length;
     while (on < BASE_ORBS) { randomOrb(m); on++; }
     for (const o of m.orbs) if (o.on && Math.hypot(o.x, o.z) > R - 2) { o.on = false; }
-    // run into somebody else's tail = out
     const poses = m.cars.map(c => (c.alive ? segmentPoses(c) : []));
     for (const c of m.cars) {
       if (!c.alive) continue;
@@ -256,7 +240,7 @@ export function updateMatch(m, inputs, dt) {
     }
     const left = alive(m);
     if (left.length <= 1) endRound(m, left.length ? left[0].i : -1, out);
-    else if (m.time > 150) { // time cap: longest snake wins
+    else if (m.time > 150) {
       const best = Math.max(...left.map(c => c.segs)), top = left.filter(c => c.segs === best);
       endRound(m, top.length === 1 ? top[0].i : -1, out);
     }

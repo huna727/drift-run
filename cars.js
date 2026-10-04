@@ -1,9 +1,5 @@
 // Car shapes + data. Pure JS (no three.js) so the geometry can be unit-tested.
-// Units: metres. +Z = nose, +X = car's left, +Y = up. Every shape is built from a
-// half-profile and mirrored, so left/right are identical by construction.
-
-// body row: [z, yBottom, halfW bottom, yShoulder, halfW shoulder, yTop, halfW top]  (nose -> tail)
-// cab  row: [z, roofY|null, halfW at base, halfW at roof]  (null roofY = glass meets body)
+// Units: metres. +Z = nose, +X = car's left, +Y = up.
 
 export const CAR_DEFS = {
   hachi: {
@@ -182,7 +178,6 @@ export const CAR_ORDER = ['hachi', 'kei', 'corsa', 'pickup', 'muscle', 'volt', '
 
 const lerp = (a, b, t) => a + (b - a) * t;
 
-/** interpolate a body row at z -> [yBot, wBot, yShoulder, wShoulder, yTop, wTop] */
 export function sampleBody(rows, z) {
   if (z >= rows[0][0]) return rows[0].slice(1);
   for (let i = 0; i < rows.length - 1; i++) {
@@ -194,12 +189,10 @@ export function sampleBody(rows, z) {
   }
   return rows[rows.length - 1].slice(1);
 }
-/** half width of a body row at height y */
-export function halfWidthAt(r, y) { // r = [y0,w0,ys,w1,yt,wt]
+export function halfWidthAt(r, y) {
   if (y <= r[2]) return lerp(r[1], r[3], Math.max(0, (y - r[0]) / (r[2] - r[0] || 1)));
   return lerp(r[3], r[5], Math.min(1, (y - r[2]) / (r[4] - r[2] || 1)));
 }
-/** cabin sample at z -> {yb, yr, wb, wr} */
 export function sampleCab(def, z) {
   const rings = cabRings(def);
   for (let i = 0; i < rings.length - 1; i++) {
@@ -217,8 +210,6 @@ function cabRings(def) {
     return { z, yb, yr: roof == null ? yb : roof, wb, wr };
   });
 }
-
-/** Generic loft. rings: arrays of [x,y,z] with equal length. Returns plain arrays. */
 export function loft(rings, edgeMat, capMat = 0) {
   const n = rings[0].length, pos = [], buckets = {};
   for (const r of rings) for (const p of r) pos.push(p[0], p[1], p[2]);
@@ -230,7 +221,7 @@ export function loft(rings, edgeMat, capMat = 0) {
       put(m, a, b, d); put(m, a, d, c);
     }
   }
-  const cap = (ring, base, flip) => { // fan from the centroid
+  const cap = (ring, base, flip) => {
     const c = [0, 0, 0]; for (const p of ring) { c[0] += p[0] / n; c[1] += p[1] / n; c[2] += p[2] / n; }
     const ci = pos.length / 3; pos.push(c[0], c[1], c[2]);
     for (let j = 0; j < n; j++) flip ? put(capMat, ci, base + (j + 1) % n, base + j) : put(capMat, ci, base + j, base + (j + 1) % n);
@@ -243,21 +234,16 @@ export function loft(rings, edgeMat, capMat = 0) {
   }
   return { pos: new Float32Array(pos), index: new Uint32Array(index), groups };
 }
-
-/** lower body "tub". material 0 = paint, 1 = dark underside */
 export function bodyLoft(def) {
   const rings = def.rows.map(([z, y0, w0, ys, w1, yt, wt]) =>
     [[-w0, y0, z], [w0, y0, z], [w1, ys, z], [wt, yt, z], [-wt, yt, z], [-w1, ys, z]]);
   return loft(rings, (s, j) => (j === 0 ? 1 : 0), 0);
 }
-/** greenhouse. material 0 = glass, 1 = paint (roof) */
 export function cabinLoft(def) {
   const rr = cabRings(def);
   const rings = rr.map(r => [[-r.wb, r.yb, r.z], [r.wb, r.yb, r.z], [r.wr, r.yr, r.z], [-r.wr, r.yr, r.z]]);
   return loft(rings, (s, j, last) => (j === 0 ? 1 : j === 2 ? (s === 0 || s === last - 1 ? 0 : 1) : 0), null);
 }
-
-/** where the wheels sit so the tyre face ends up just proud of the body side */
 export function wheelLayout(def, stance = 0.03) {
   const out = {};
   for (const [axle, sgn] of [['front', 1], ['rear', -1]]) {
