@@ -80,7 +80,6 @@ body.ctrl-tilt .zone,body.photo.touch .zone{pointer-events:auto}
 .pedal.brake{left:calc(16px + var(--sal));width:104px;background:var(--hot)}
 .mini{width:70px;height:70px;border-radius:50%;font-size:12px}
 .mini.hb{left:calc(20px + var(--sal));bottom:calc(128px + var(--sab));background:var(--sky);color:var(--line);text-shadow:none}
-.mini.kick{left:calc(100px + var(--sal));bottom:calc(128px + var(--sab));background:#b388ff}
 .mini.boost{right:calc(30px + var(--sar));bottom:calc(128px + var(--sab));background:var(--sun);color:var(--line);text-shadow:none;font-size:13px}
 #steer{display:none}
 .steer{bottom:calc(18px + var(--sab));width:88px;height:88px;border-radius:50%;font-size:34px;background:var(--sky);color:var(--line);text-shadow:none}
@@ -89,6 +88,8 @@ body.ctrl-btn #steer{display:block}
 body.ctrl-btn .pedal.brake{left:auto;right:calc(166px + var(--sar));width:92px}
 body.ctrl-tilt .tbtn.pedal{pointer-events:none}
 body.photo.touch .tbtn{display:none}
+/* in multiplayer every split has its own controls hint, so hide the on-screen buttons */
+body.mp .tbtn,body.mp #steer{display:none!important}
 #tip{position:absolute;left:50%;bottom:calc(92px + var(--sab));transform:translateX(-50%);background:#fff;color:var(--line);border:3px solid var(--line);border-radius:18px;padding:8px 16px;font-size:15px;font-weight:400;box-shadow:0 4px 0 var(--line);opacity:0;pointer-events:none;white-space:nowrap;max-width:92vw}
 #tip.show{animation:tip 5s ease-out forwards}
 @keyframes tip{0%{opacity:0;transform:translate(-50%,10px)}8%{opacity:1;transform:translate(-50%,0)}85%{opacity:1}100%{opacity:0}}
@@ -124,7 +125,7 @@ body.mp #hud,body.mp #classes{display:none}
 .pips{position:absolute;top:12px;right:12px;font-size:22px;letter-spacing:3px;text-shadow:var(--outl)}
 .pv[data-i="1"] .pips,.pv[data-i="3"] .pips{right:14px}
 .psub{position:absolute;left:12px;bottom:10px;font-size:15px;font-weight:400;text-shadow:var(--outl)}
-.phint{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);white-space:nowrap;background:#fff;color:var(--line);border:3px solid var(--line);border-radius:14px;padding:4px 12px;font-size:13px;font-weight:400;box-shadow:0 3px 0 var(--line);transition:opacity .6s}
+.phint{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);white-space:nowrap;background:#fff;color:var(--line);border:3px solid var(--line);border-radius:14px;padding:4px 12px;font-size:13px;font-weight:400;box-shadow:0 3px 0 var(--line);opacity:1}
 .pout{display:none;position:absolute;left:50%;top:45%;transform:translate(-50%,-50%) rotate(-6deg);font-size:clamp(34px,7vw,80px);font-weight:400;color:var(--hot);text-shadow:var(--outl)}
 .pv.dead .pout{display:block}
 .pv.dead{background:rgba(29,18,69,.35)}
@@ -140,7 +141,7 @@ body.mp #hud,body.mp #classes{display:none}
 @media (prefers-reduced-motion:reduce){#toast.show,#tip.show{animation-duration:.01s}#rotate div{animation:none}}
 
 /* ============================================================
-   MENU SYSTEM  (all screen UI lives inside #menu)
+   MENU SYSTEM
    ============================================================ */
 #menu {
   position: fixed; inset: 0; z-index: 5;
@@ -153,7 +154,6 @@ body.mp #hud,body.mp #classes{display:none}
 #menu:not(.off) #mBody > *,
 #menu:not(.off) #mFoot { pointer-events: auto; }
 
-/* ---- top bar ---- */
 #mTop {
   display: flex; align-items: center; gap: 16px;
   padding: calc(14px + var(--sat)) calc(22px + var(--sar)) 14px calc(22px + var(--sal));
@@ -194,7 +194,6 @@ body.mp #hud,body.mp #classes{display:none}
 .m-cog:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 .m-cog svg { width: 20px; height: 20px; fill: currentColor; }
 
-/* ---- body ---- */
 #mBody {
   display: grid;
   grid-template-columns: minmax(380px, 500px) 1fr;
@@ -229,7 +228,6 @@ body.mp #hud,body.mp #classes{display:none}
 .m-side::-webkit-scrollbar-thumb { background: rgba(255,255,255,.2); border-radius: 3px; }
 .m-side:empty { display: none; }
 
-/* ---- screen header ---- */
 .m-screen { display: flex; flex-direction: column; min-height: 0; }
 .m-title {
   margin: 0 0 8px;
@@ -247,7 +245,6 @@ body.mp #hud,body.mp #classes{display:none}
   letter-spacing: .2px;
 }
 
-/* ---- big game buttons ---- */
 .m-actions { display: flex; flex-direction: column; gap: 10px; }
 .gbtn {
   display: flex; align-items: center; gap: 14px;
@@ -273,6 +270,7 @@ body.mp #hud,body.mp #classes{display:none}
   display: grid; place-items: center;
   font-size: 22px; line-height: 1;
   background: rgba(0,0,0,.28); border-radius: 8px;
+  color: var(--sun);
 }
 .gbtn .tx { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .gbtn .tx small {
@@ -290,12 +288,15 @@ body.mp #hud,body.mp #classes{display:none}
   border-left-color: var(--hot);
   box-shadow: 0 8px 0 rgba(0,0,0,.4), inset 0 3px 0 rgba(255,255,255,.5), -6px 0 0 rgba(255,210,63,.3);
 }
-.gbtn.primary .ic { font-size: 32px; width: 52px; height: 52px; background: rgba(0,0,0,.12); }
+.gbtn.primary .ic { font-size: 32px; width: 52px; height: 52px; background: rgba(0,0,0,.12); color: var(--line); }
 .gbtn.primary .tx small { color: rgba(11,8,32,.75); }
 .gbtn.primary .tx span:first-child { font-size: 30px; }
 .gbtn.blue { border-left-color: var(--sky); }
+.gbtn.blue .ic { color: #9fcaff; }
 .gbtn.red { border-left-color: var(--hot); }
+.gbtn.red .ic { color: #ff9aa1; }
 .gbtn.green { border-left-color: var(--mint); }
+.gbtn.green .ic { color: var(--mint); }
 .gbtn.sm {
   width: auto; padding: 10px 18px; font-size: 14px;
   border-left-width: 4px; gap: 8px; flex: none;
@@ -309,7 +310,6 @@ body.mp #hud,body.mp #classes{display:none}
   color: #fff !important; box-shadow: none !important;
 }
 
-/* ---- card list ---- */
 .m-list { display: flex; flex-direction: column; gap: 8px; }
 .card {
   display: grid; grid-template-columns: 1fr auto;
@@ -335,7 +335,6 @@ body.mp #hud,body.mp #classes{display:none}
   line-height: 1.4; margin-top: 6px; font-weight: 500;
 }
 
-/* ---- footer bar ---- */
 #mFoot {
   display: flex; align-items: center; gap: 10px;
   padding: 14px calc(22px + var(--sar)) calc(14px + var(--sab)) calc(22px + var(--sal));
@@ -351,7 +350,6 @@ body.mp #hud,body.mp #classes{display:none}
 .m-status { flex: 1; font-size: 13px; opacity: .8; line-height: 1.35; }
 .m-status b { color: var(--sun); font-style: italic; }
 
-/* ---- settings/tuning controls ---- */
 .m-sec + .m-sec { margin-top: 20px; }
 .m-sec > h3 {
   margin: 0 0 10px;
@@ -422,7 +420,6 @@ body.mp #hud,body.mp #classes{display:none}
 .sw:hover { transform: scale(1.1); }
 .sw.sel { border-color: #fff; box-shadow: 0 0 0 3px rgba(255,210,63,.4); }
 
-/* ---- performance side panel ---- */
 .m-side h3 {
   margin: 0 0 6px; font-size: 18px; font-style: italic;
   text-shadow: 0 2px 0 var(--line); font-weight: 400;
@@ -439,7 +436,6 @@ body.mp #hud,body.mp #classes{display:none}
 .bal { margin-top: 16px; font-size: 15px; }
 .bal b { color: var(--sun); font-style: italic; font-weight: 400; }
 
-/* ---- map cards ---- */
 .map-card {
   position: relative; display: flex; align-items: center; gap: 14px;
   padding: 14px; width: 100%;
@@ -458,7 +454,8 @@ body.mp #hud,body.mp #classes{display:none}
 .m-thumb {
   flex: none; width: 92px; height: 66px;
   border: 2px solid rgba(255,255,255,.15);
-  display: grid; place-items: center; font-size: 26px;
+  display: grid; place-items: center; font-size: 22px;
+  color: rgba(255,255,255,.85); font-style: italic; letter-spacing: 2px;
 }
 .m-thumb.t1 { background: linear-gradient(#ff9a6c 0%, #6b4bd6 60%, #2c2f36 100%); }
 .m-thumb.t2 { background: linear-gradient(#18d6c0 0%, #e83fa0 60%, #243b55 100%); }
@@ -469,7 +466,6 @@ body.mp #hud,body.mp #classes{display:none}
 .m-go { color: var(--sun); font-size: 14px; font-style: italic; white-space: nowrap; font-weight: 400; }
 .map-card.locked .m-go { color: #fff; opacity: .5; }
 
-/* ---- pause / match-end overlay ---- */
 .m-overlay {
   position: absolute; inset: 0;
   display: grid; place-items: center;
@@ -490,7 +486,6 @@ body.mp #hud,body.mp #classes{display:none}
 .pause-card .m-actions { margin-top: 4px; }
 .pause-card .m-actions .gbtn { text-transform: none; }
 
-/* ---- multiplayer player row ---- */
 .prow {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 12px; background: rgba(11,8,32,.42);
@@ -508,7 +503,6 @@ body.mp #hud,body.mp #classes{display:none}
   border-radius: 50%; border: 2px solid var(--line); flex: none;
 }
 
-/* ---- mobile ---- */
 @media (max-width: 780px) {
   #mBody { grid-template-columns: 1fr; }
   .m-main { padding: 12px 18px; background: rgba(11,8,32,.86); }
@@ -540,7 +534,7 @@ body.mp #hud,body.mp #classes{display:none}
 <body>
 <div id="hud">
   <div id="drift" class="panel"><div><span id="score">0</span><span id="mult"></span></div><div id="meta">Angle <b id="angle">0</b>° · Banked <b id="total">0</b> · Best <b id="best">0</b> · Cash $<b id="cash">0</b></div><div id="obj"></div></div>
-  <div id="help" class="panel"><div class="keys"><kbd>W</kbd> gas <kbd>S</kbd> brake <kbd>A</kbd><kbd>D</kbd> steer<br><kbd>Space</kbd> handbrake <kbd>Shift</kbd> boost <kbd>E</kbd> kick<br><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> speed <kbd>P</kbd> photo <kbd>C</kbd> cam <kbd>R</kbd> reset<br><kbd>Esc</kbd> menu</div></div>
+  <div id="help" class="panel"><div class="keys"><kbd>W</kbd> gas <kbd>S</kbd> brake <kbd>A</kbd><kbd>D</kbd> steer<br><kbd>Space</kbd> handbrake <kbd>Shift</kbd> boost<br><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> speed <kbd>P</kbd> photo <kbd>C</kbd> cam <kbd>R</kbd> reset<br><kbd>Esc</kbd> menu</div></div>
   <div id="speedo"><svg id="dial" viewBox="0 0 200 200" aria-hidden="true"></svg><div id="gearBox"><span id="gearN">N</span></div><div id="spdBox"><span id="speed">0<small></small></span><small>km/h</small></div><div id="boostbar"><i id="boostfill"></i></div><div id="tire"></div></div>
   <div id="toast"></div>
 </div>
@@ -553,14 +547,13 @@ body.mp #hud,body.mp #classes{display:none}
   <button id="pBrake" class="tbtn pedal brake" tabindex="-1">BRAKE</button>
   <button id="pGas" class="tbtn pedal gas" tabindex="-1">GAS</button>
   <button id="bHB" class="tbtn mini hb" tabindex="-1">HAND<br>BRAKE</button>
-  <button id="bKick" class="tbtn mini kick" tabindex="-1">KICK</button>
   <button id="bBoost" class="tbtn mini boost" tabindex="-1">BOOST</button>
   <div id="tip" role="status"></div>
 </div>
 
 <div id="ui">
   <button id="btnSettings" class="cbtn" aria-label="Settings" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></button>
-  <button id="photoX" class="cbtn" tabindex="-1">📷 Done</button>
+  <button id="photoX" class="cbtn" tabindex="-1">DONE</button>
   <div id="classes" role="group" aria-label="Speed class">
     <button class="cls c1" data-i="0" tabindex="-1" aria-label="Speed class 1"><b>1</b><small>--</small></button>
     <button class="cls c2" data-i="1" tabindex="-1" aria-label="Speed class 2"><b>2</b><small>--</small></button>
@@ -586,7 +579,7 @@ body.mp #hud,body.mp #classes{display:none}
   <footer id="mFoot"></footer>
 </div>
 
-<div id="rotate"><div>📱</div><b>Turn your phone sideways to drive!</b></div>
+<div id="rotate"><div>ROTATE</div><b>Turn your phone sideways to drive!</b></div>
 <script type="module" src="/main.js"></script>
 </body>
 </html>

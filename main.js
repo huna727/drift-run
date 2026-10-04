@@ -3,7 +3,7 @@ import { CAR_DEFS, CAR_ORDER, bodyLoft, cabinLoft, sampleBody, halfWidthAt, samp
 import { MP_R, MAX_SEG, MAX_ORBS, PCOLORS, PNAMES, KEYMAPS, layout as vpLayout, createMatch, updateMatch, arenaR, segmentPoses, susStep } from './multi.js';
 import { TIERS, COMPOUNDS, TUNE_GROUPS, PRESETS, defaultTune, derive } from './tuning.js';
 
-const WALL = 150, ISL = 38, CR = 1.6; // arena radius, island radius, car radius
+const WALL = 150, ISL = 38, CR = 1.6;
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -210,7 +210,7 @@ const STAGE = { x: 0, y: 600, z: 0 };
 /* ================= CAR MODELS ================= */
 const PIV = 0.4;
 const dark = M(0x15171c), darkDS = M(0x15171c, { side: THREE.DoubleSide });
-const glass = M(0x2a3a52, { roughness: 0.15, metalness: 0.3, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+const glass = M(0x2a3a52, { roughness: 0.15, metalness: 0.3, side: THREE.DoubleSide, transparent: true, opacity: 0.55 });
 const silver = M(0xd6dbe4, { metalness: 0.7, roughness: 0.3 }), redCal = M(0xe3262e), spokeMat = M(0x2a2d36, { metalness: 0.4, roughness: 0.5 });
 const lamp = M(0xffffff, { emissive: 0xfff2c0, emissiveIntensity: 1.6 }), tail = M(0xff2233, { emissive: 0xff1122, emissiveIntensity: 1.4 });
 const carGroup = new THREE.Group(); scene.add(carGroup);
@@ -261,6 +261,179 @@ function liveryTex(def, hex) {
 const liveryMat = (def, hex) => new THREE.MeshStandardMaterial({ map: liveryTex(def, hex), flatShading: true, roughness: 0.45, metalness: 0.2, side: THREE.DoubleSide });
 function repaint(m, hex) { m.solid.color.setHex(hex); m.paint.map.dispose(); m.paint.map = liveryTex(m.def, hex); m.paint.needsUpdate = true; }
 
+/* --- helper: a bar connecting two local points, used for cage and arms --- */
+function makeBar(a, b, r, mat) {
+  const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b);
+  const len = A.distanceTo(B);
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 8), mat);
+  m.position.copy(A).add(B).multiplyScalar(0.5);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());
+  return m;
+}
+
+/* --- the driver sitting in the car, with a steerable wheel --- */
+function buildCockpitDriver(def) {
+  const suit = M(0x1a1d24);
+  const skin = M(0xecd0b0);
+  const helm = M(0xd93b3b);
+  const visor = M(0x0a0d14);
+  const boot = M(0x0a0d14);
+  const rig = new THREE.Group();
+
+  const zf = def.cab[1][0], zr = def.cab[2][0];
+  const cf = sampleCab(def, zf), cr = sampleCab(def, zr);
+  const zs = (zf + zr) / 2;
+  const floor = cf.yb + 0.10;
+
+  // legs (mostly hidden, but a knee and a foot peek above the dashboard)
+  for (const sx of [1, -1]) {
+    const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.07, 0.42, 8), suit);
+    thigh.position.set(sx * 0.13, 0.20, 0.28);
+    thigh.rotation.x = Math.PI / 2.2;
+    rig.add(thigh);
+    const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.06, 0.36, 8), suit);
+    shin.position.set(sx * 0.13, 0.08, 0.44);
+    shin.rotation.x = 1.2;
+    rig.add(shin);
+    const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.07, 0.20), boot);
+    shoe.position.set(sx * 0.13, 0.035, 0.55);
+    rig.add(shoe);
+  }
+
+  // torso
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.42, 0.22), suit);
+  torso.position.set(0, 0.42, 0.05);
+  rig.add(torso);
+
+  // chest belt / racing harness accent
+  const belt = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.045, 0.24), M(0xd93b3b));
+  belt.position.set(0, 0.46, 0.05);
+  rig.add(belt);
+
+  // shoulder block
+  const sh = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.09, 0.20), suit);
+  sh.position.set(0, 0.60, 0.05);
+  rig.add(sh);
+
+  // neck + head + helmet + visor
+  const headY = 0.78;
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.06, 8), skin);
+  neck.position.set(0, 0.665, 0.05);
+  rig.add(neck);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.105, 12, 10), skin);
+  head.position.set(0, headY, 0.05);
+  rig.add(head);
+  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.122, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.72), helm);
+  helmet.position.set(0, headY, 0.05);
+  rig.add(helmet);
+  const visorBox = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.07, 0.05), visor);
+  visorBox.position.set(0, headY + 0.005, 0.15);
+  rig.add(visorBox);
+
+  // steering wheel rig: an outer tilt group holds a small spin group so the wheel turns in its own plane
+  const swTilt = new THREE.Group();
+  swTilt.position.set(0.02, 0.52, 0.30);
+  swTilt.rotation.x = 1.15;
+  rig.add(swTilt);
+  const swSpin = new THREE.Group();
+  swTilt.add(swSpin);
+
+  const wheelMat = M(0x0d0f14);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.017, 8, 22), wheelMat);
+  swSpin.add(ring);
+  // three spokes: left, right, bottom
+  const spokeH = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.022, 0.022), wheelMat);
+  swSpin.add(spokeH);
+  const spokeB = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.14, 0.022), wheelMat);
+  spokeB.position.set(0, -0.07, 0);
+  swSpin.add(spokeB);
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.028, 10), M(0x1c1f28));
+  hub.rotation.x = Math.PI / 2;
+  swSpin.add(hub);
+
+  // arms from the shoulders to the wheel
+  const shoulderL = [-0.17, 0.58, 0.05];
+  const shoulderR = [0.17, 0.58, 0.05];
+  const handL = [0.02 - 0.11, 0.52, 0.34];
+  const handR = [0.02 + 0.11, 0.52, 0.34];
+  rig.add(makeBar(shoulderL, handL, 0.045, suit));
+  rig.add(makeBar(shoulderR, handR, 0.045, suit));
+  const handGeo = new THREE.SphereGeometry(0.048, 8, 6);
+  const hl = new THREE.Mesh(handGeo, skin); hl.position.set(...handL); rig.add(hl);
+  const hr = new THREE.Mesh(handGeo, skin); hr.position.set(...handR); rig.add(hr);
+
+  return { rig, swSpin };
+}
+
+/* --- the crew member who stands beside the car in the garage --- */
+function buildStandingCrew() {
+  const suit = M(0x1a1d24);
+  const skin = M(0xecd0b0);
+  const helm = M(0xd93b3b);
+  const visor = M(0x0a0d14);
+  const shoe = M(0x0a0d14);
+  const stripe = M(0xd93b3b);
+  const g = new THREE.Group();
+
+  // legs
+  for (const sx of [1, -1]) {
+    const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.07, 0.78, 8), suit);
+    thigh.position.set(sx * 0.10, 0.40, 0);
+    g.add(thigh);
+    const shoeMesh = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.09, 0.24), shoe);
+    shoeMesh.position.set(sx * 0.10, 0.045, 0.05);
+    g.add(shoeMesh);
+  }
+  // hips
+  const hips = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.14, 0.20), suit);
+  hips.position.y = 0.82;
+  g.add(hips);
+  // torso
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.42, 0.22), suit);
+  torso.position.y = 1.10;
+  g.add(torso);
+  // racing stripe
+  const st = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.05, 0.24), stripe);
+  st.position.y = 1.18;
+  g.add(st);
+  // shoulders
+  const sh = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.10, 0.20), suit);
+  sh.position.y = 1.32;
+  g.add(sh);
+  // arms hanging naturally, elbows slightly out
+  for (const sx of [1, -1]) {
+    const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.05, 0.34, 8), suit);
+    upper.position.set(sx * 0.22, 1.14, 0);
+    upper.rotation.z = sx * 0.18;
+    g.add(upper);
+    const fore = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.32, 8), suit);
+    fore.position.set(sx * 0.26, 0.84, 0.02);
+    fore.rotation.z = sx * 0.05;
+    fore.rotation.x = -0.12;
+    g.add(fore);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), skin);
+    hand.position.set(sx * 0.28, 0.66, 0.05);
+    g.add(hand);
+  }
+  // neck
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.06, 8), skin);
+  neck.position.y = 1.40;
+  g.add(neck);
+  // head
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), skin);
+  head.position.y = 1.53;
+  g.add(head);
+  // helmet
+  const helmetM = new THREE.Mesh(new THREE.SphereGeometry(0.128, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.72), helm);
+  helmetM.position.y = 1.53;
+  g.add(helmetM);
+  // visor
+  const visorM = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.07, 0.05), visor);
+  visorM.position.set(0, 1.53, 0.10);
+  g.add(visorM);
+  return g;
+}
+
 function buildModel(def, paintHex) {
   const paint = liveryMat(def, paintHex), solid = M(paintHex, { roughness: 0.45, metalness: 0.2, side: THREE.DoubleSide });
   const root = new THREE.Group(), pivot = new THREE.Group(), body = new THREE.Group();
@@ -275,6 +448,7 @@ function buildModel(def, paintHex) {
   put(toGeo(bodyLoft(def)), [paint, darkDS], 0, 0, 0);
   put(toGeo(cabinLoft(def)), [glass, paint], 0, 0, 0);
 
+  // lights, grille, bumper lips, exhausts
   const lights = (row, z, mat, frac) => {
     const y0 = row[0], yt = row[4], yy = y0 + (yt - y0) * frac, hh = Math.min(0.13, Math.max(0.07, (yt - y0) * 0.3));
     const hw = halfWidthAt(row, yy + hh / 2);
@@ -292,6 +466,7 @@ function buildModel(def, paintHex) {
   if (def.scoop) { const s = def.scoop; box(s.w, s.h, s.l, dark, 0, sampleBody(rows, s.z)[4] + s.h / 2 - 0.01, s.z); }
   if (def.vents) { const v = def.vents, hw = halfWidthAt(sampleBody(rows, v.z), v.y); for (const sx of [1, -1]) box(0.05, v.h, v.l, dark, sx * hw, v.y, v.z); }
 
+  // mirrors + B pillars
   const c0 = sampleCab(def, def.cab[0][0] - 0.12);
   for (const sx of [1, -1]) box(0.12, 0.08, 0.14, solid, sx * (c0.wb + 0.07), c0.yb + 0.17, def.cab[0][0] - 0.1);
   const bp = sampleCab(def, def.bpillar), bh = bp.yr - bp.yb;
@@ -300,27 +475,63 @@ function buildModel(def, paintHex) {
     p.rotation.z = sx * Math.atan((bp.wb - bp.wr) / bh);
   }
 
+  // ---------- cabin interior: dashboard, seats, roll cage ----------
   {
-    const cage = M(0x16181f), up = new THREE.Vector3(0, 1, 0);
-    const bar = (a, b, r = 0.022) => {
-      const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), len = A.distanceTo(B), m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 6), cage);
-      m.position.copy(A).add(B).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(up, B.clone().sub(A).normalize()); body.add(m);
-    };
-    const zf = def.cab[1][0], zr = def.cab[2][0], cf = sampleCab(def, zf), cr = sampleCab(def, zr);
+    const zDash = def.cab[1][0] + 0.08;
+    const cd = sampleCab(def, zDash);
+    const zMid = (def.cab[1][0] + def.cab[2][0]) / 2;
+    const cm = sampleCab(def, zMid);
+    const interior = M(0x1a1d24);
+    const seatM = M(0x24272f);
+    const trimM = M(0x35383f);
+    const gauge = M(0x0a0d14);
+
+    // dashboard slab (visible through the windshield)
+    box(cd.wb * 1.62, 0.13, 0.20, interior, 0, cd.yb + 0.12, zDash);
+    // dash top edge in body colour
+    box(cd.wb * 1.62, 0.045, 0.22, trimM, 0, cd.yb + 0.215, zDash);
+    // gauge cluster (driver side = negative x)
+    box(0.22, 0.09, 0.05, gauge, -0.30, cd.yb + 0.235, zDash + 0.055);
+    // centre screen
+    box(0.16, 0.10, 0.05, gauge, 0, cd.yb + 0.20, zDash + 0.06);
+    // centre console between the seats
+    const conL = Math.abs(def.cab[1][0] - def.cab[2][0]) * 0.5;
+    box(0.12, 0.09, conL, interior, 0, cm.yb + 0.06, zMid + 0.06);
+
+    // two seats: base, backrest, headrest
     for (const sx of [1, -1]) {
-      bar([sx * cf.wr * 0.95, cf.yr - 0.05, zf], [sx * cr.wr * 0.95, cr.yr - 0.05, zr]);
-      bar([sx * cf.wb * 0.95, cf.yb + 0.12, zf], [sx * cr.wr * 0.95, cr.yr - 0.05, zr]);
-      bar([sx * cr.wb * 0.95, cr.yb + 0.12, zr], [sx * cf.wr * 0.95, cf.yr - 0.05, zf]);
-      bar([sx * cf.wb * 0.95, cf.yb + 0.12, zf], [sx * cf.wr * 0.95, cf.yr - 0.05, zf]);
+      const sx2 = sx * 0.32;
+      const sz = zMid + 0.12;
+      box(0.38, 0.09, 0.42, seatM, sx2, cm.yb + 0.15, sz);
+      const back = box(0.38, 0.48, 0.09, seatM, sx2, cm.yb + 0.44, sz - 0.22);
+      back.rotation.x = -0.10;
+      box(0.20, 0.09, 0.07, seatM, sx2, cm.yb + 0.74, sz - 0.26);
     }
-    bar([-cf.wr * 0.95, cf.yr - 0.05, zf], [cf.wr * 0.95, cf.yr - 0.05, zf]); bar([-cr.wr * 0.95, cr.yr - 0.05, zr], [cr.wr * 0.95, cr.yr - 0.05, zr]);
-    const zs = (zf + zr) / 2;
-    box(0.4, 0.5, 0.1, cage, -0.32, cf.yb + 0.3, zs - 0.15, body);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), M(0xf4f4f4)); head.position.set(-0.32, cf.yb + 0.72, zs - 0.12); body.add(head);
-    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.07, 0.1), M(0x0b0820)); visor.position.set(-0.32, cf.yb + 0.72, zs + 0.0); body.add(visor);
-    const wheelS = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.02, 6, 14), cage); wheelS.position.set(-0.32, cf.yb + 0.52, zs + 0.3); wheelS.rotation.x = 1.0; body.add(wheelS);
   }
 
+  // roll cage (bars around the cabin)
+  {
+    const cage = M(0x16181f);
+    const zf = def.cab[1][0], zr = def.cab[2][0], cf = sampleCab(def, zf), cr = sampleCab(def, zr);
+    for (const sx of [1, -1]) {
+      body.add(makeBar([sx * cf.wr * 0.95, cf.yr - 0.05, zf], [sx * cr.wr * 0.95, cr.yr - 0.05, zr], 0.022, cage));
+      body.add(makeBar([sx * cf.wb * 0.95, cf.yb + 0.12, zf], [sx * cr.wr * 0.95, cr.yr - 0.05, zr], 0.022, cage));
+      body.add(makeBar([sx * cr.wb * 0.95, cr.yb + 0.12, zr], [sx * cf.wr * 0.95, cf.yr - 0.05, zf], 0.022, cage));
+      body.add(makeBar([sx * cf.wb * 0.95, cf.yb + 0.12, zf], [sx * cf.wr * 0.95, cf.yr - 0.05, zf], 0.022, cage));
+    }
+    body.add(makeBar([-cf.wr * 0.95, cf.yr - 0.05, zf], [cf.wr * 0.95, cf.yr - 0.05, zf], 0.022, cage));
+    body.add(makeBar([-cr.wr * 0.95, cr.yr - 0.05, zr], [cr.wr * 0.95, cr.yr - 0.05, zr], 0.022, cage));
+  }
+
+  // ---------- the driver, sitting in the car ----------
+  const cockpit = buildCockpitDriver(def);
+  const zf = def.cab[1][0], zr = def.cab[2][0];
+  const cf = sampleCab(def, zf);
+  const zs = (zf + zr) / 2;
+  cockpit.rig.position.set(-0.32, cf.yb + 0.10, zs - 0.10);
+  body.add(cockpit.rig);
+
+  // rear wing (angle follows the tune) + front splitter (length follows the tune)
   const ws = def.wingSpec, wing = new THREE.Group(), plane = new THREE.Group();
   wing.position.set(0, sampleBody(rows, ws.z)[4] - 0.01, ws.z); body.add(wing);
   plane.position.y = ws.h; wing.add(plane);
@@ -331,25 +542,39 @@ function buildModel(def, paintHex) {
   box(ws.hw * 2, 0.035, ws.chord, dark, 0, 0, 0, plane);
   const splitter = put(new THREE.BoxGeometry(nr[1] * 2 + 0.1, 0.03, 1), dark, 0, nr[0] - 0.02, nz);
 
+  // wheels + flares
   const lay = wheelLayout(def), wheels = [];
   for (const axle of ['front', 'rear']) {
     const L = lay[axle];
-    const tireGeo = new THREE.CylinderGeometry(L.R, L.R, L.w, 20).rotateZ(Math.PI / 2);
-    const rimGeo = new THREE.CylinderGeometry(L.R * 0.64, L.R * 0.64, L.w * 1.02, 10).rotateZ(Math.PI / 2);
-    const capGeo = new THREE.CylinderGeometry(L.R * 0.14, L.R * 0.14, L.w * 1.07, 8).rotateZ(Math.PI / 2);
-    const spokeGeo = new THREE.BoxGeometry(L.w * 1.06, L.R * 0.66, L.R * 0.17).translate(0, L.R * 0.33, 0), calGeo = new THREE.BoxGeometry(L.w * 0.3, L.R * 0.34, L.R * 0.26), discGeo = new THREE.CylinderGeometry(L.R * 0.5, L.R * 0.5, 0.025, 14).rotateZ(Math.PI / 2);
-    const flareGeo = new THREE.CylinderGeometry(L.R + 0.08, L.R + 0.08, L.w + 0.1, 16, 1, true, 0, Math.PI).rotateZ(Math.PI / 2);
+    const tireGeo = new THREE.CylinderGeometry(L.R, L.R, L.w, 22).rotateZ(Math.PI / 2);
+    const rimGeo = new THREE.CylinderGeometry(L.R * 0.62, L.R * 0.62, L.w * 1.02, 16).rotateZ(Math.PI / 2);
+    const capGeo = new THREE.CylinderGeometry(L.R * 0.14, L.R * 0.14, L.w * 1.07, 10).rotateZ(Math.PI / 2);
+    // spokes fit inside the rim: half-length 0.28R translated up by 0.30R gives tip at 0.58R (rim is 0.62R)
+    const spokeGeo = new THREE.BoxGeometry(L.w * 1.04, L.R * 0.56, L.R * 0.12).translate(0, L.R * 0.30, 0);
+    const calGeo = new THREE.BoxGeometry(L.w * 0.28, L.R * 0.32, L.R * 0.24);
+    const discGeo = new THREE.CylinderGeometry(L.R * 0.5, L.R * 0.5, 0.025, 16).rotateZ(Math.PI / 2);
+    // proper half-torus fender flare (arc over the top of the wheel)
+    const flareGeo = new THREE.TorusGeometry(L.R + 0.06, 0.06, 6, 14, Math.PI).rotateY(Math.PI / 2);
     for (const sx of [1, -1]) {
       const wp = new THREE.Group(), cg = new THREE.Group(), roll = new THREE.Group();
       wp.position.set(sx * L.x, L.R, L.z); wp.add(cg); cg.add(roll); root.add(wp);
-      const t = new THREE.Mesh(tireGeo, dark); t.castShadow = true; roll.add(t, new THREE.Mesh(rimGeo, spokeMat), new THREE.Mesh(capGeo, silver));
+      const t = new THREE.Mesh(tireGeo, dark); t.castShadow = true; roll.add(t);
+      roll.add(new THREE.Mesh(rimGeo, spokeMat));
+      roll.add(new THREE.Mesh(capGeo, silver));
       for (let k = 0; k < 5; k++) { const sp = new THREE.Mesh(spokeGeo, silver); sp.rotation.x = k * Math.PI * 2 / 5; roll.add(sp); }
-      const cal = new THREE.Mesh(calGeo, redCal); cal.position.set(-sx * L.w * 0.2, L.R * 0.42, L.R * 0.18); const dsc = new THREE.Mesh(discGeo, spokeMat); dsc.position.x = -sx * L.w * 0.25; cg.add(cal, dsc);
+      const cal = new THREE.Mesh(calGeo, redCal); cal.position.set(-sx * L.w * 0.2, L.R * 0.42, L.R * 0.18);
+      const dsc = new THREE.Mesh(discGeo, spokeMat); dsc.position.x = -sx * L.w * 0.25;
+      cg.add(cal, dsc);
       const flare = put(flareGeo, solid, sx * (L.x + 0.02), L.R, L.z);
       wheels.push({ pivot: wp, camberG: cg, roll, flare, sx, axle, front: axle === 'front', R: L.R, baseX: L.x });
     }
   }
-  return { def, root, pivot, body, paint, solid, wheels, wing, plane, splitter, lay, nz, nose: nr, tune: null, toe: { front: 0, rear: 0 }, rearX: lay.rear.x };
+
+  return {
+    def, root, pivot, body, paint, solid, wheels, wing, plane, splitter, lay, nz,
+    nose: nr, tune: null, toe: { front: 0, rear: 0 }, rearX: lay.rear.x,
+    driverRig: cockpit.rig, swSpin: cockpit.swSpin,
+  };
 }
 function applyModel(t, m = model) {
   const D = Math.PI / 180; m.tune = t;
@@ -364,13 +589,24 @@ function applyModel(t, m = model) {
   const depth = 0.03 + 0.035 * t.splitter;
   m.splitter.visible = t.splitter > 0; m.splitter.scale.z = depth; m.splitter.position.z = m.nz + depth / 2 - 0.04;
 }
+function disposeGroup(g) {
+  g.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+}
 function setModel(def, hex, t) {
   if (model) {
     carGroup.remove(model.root);
     model.root.traverse(o => o.geometry && o.geometry.dispose());
     model.paint.map.dispose(); model.paint.dispose(); model.solid.dispose();
+    if (model.standFig) { carGroup.remove(model.standFig); disposeGroup(model.standFig); }
   }
-  model = buildModel(def, hex); carGroup.add(model.root); applyModel(t);
+  model = buildModel(def, hex);
+  carGroup.add(model.root);
+  model.standFig = buildStandingCrew();
+  model.standFig.position.set(-2.7, 0, 0.4);
+  model.standFig.rotation.y = Math.PI / 2;
+  model.standFig.visible = false;
+  carGroup.add(model.standFig);
+  applyModel(t);
 }
 
 /* ================= SAVE / STATE ================= */
@@ -457,7 +693,6 @@ const h = (tag, props = {}, ...kids) => {
 const hex6 = c => '#' + c.toString(16).padStart(6, '0');
 function keepScroll(fn) { const old = mLeft.querySelector('.mscroll'); const st = old ? old.scrollTop : mLeft.scrollTop; fn(); mLeft.scrollTop = st; }
 
-/* big italic racing button */
 const gbtn = (icon, label, sub, fn, cls = '') => h('button', {
   class: 'gbtn ' + cls, type: 'button', onclick: fn
 },
@@ -465,15 +700,12 @@ const gbtn = (icon, label, sub, fn, cls = '') => h('button', {
   h('span', { class: 'tx' }, h('span', {}, label), sub ? h('small', {}, sub) : null));
 const sbtn = (label, fn, cls = '') => h('button', { class: 'gbtn sm ' + cls, type: 'button', onclick: fn }, h('span', { class: 'tx' }, h('span', {}, label)));
 
-/* screen header block */
 const mHead = (title, sub) => h('header', {},
   h('h1', { class: 'm-title' }, title),
   sub ? h('p', { class: 'm-sub' }, sub) : null);
 const mSec = (title, ...kids) => h('section', { class: 'm-sec' }, title ? h('h3', {}, title) : null, ...kids);
 const footSet = (...kids) => mFoot.replaceChildren(...kids.filter(Boolean));
 const clearFoot = () => mFoot.replaceChildren();
-
-/* footer status element */
 const mStatus = (text) => h('div', { class: 'm-status', role: 'status' }, text);
 
 function sfx(kind) {
@@ -535,7 +767,6 @@ function renderMenu() {
   else if (menu === 'mpend') renderMpEnd();
 }
 
-/* ------------- HOME ------------- */
 function renderHome() {
   wheelEl = null;
   mLeft.replaceChildren(
@@ -543,20 +774,19 @@ function renderHome() {
       mHead(h('span', {}, 'DRIFT '), h('span', {}, 'RUN')),
       h('p', { class: 'm-sub' }, 'Hold gas, turn in, tap the handbrake. Chain slides to build your multiplier.'),
       h('div', { class: 'm-actions' },
-        gbtn('▶', 'Play', 'Sunset Arena · Solo drift', () => openMenu('maps'), 'primary'),
-        gbtn('🏪', 'Shop', 'Buy new cars with banked cash', () => openMenu('shop')),
-        gbtn('🔧', 'Garage', 'Tune, paint, and set stance', () => openMenu('edit')),
-        gbtn('👥', 'Multiplayer', 'Split-screen, 2 to 4 players', () => openMenu('mpsetup'), 'blue'),
-        gbtn('⚙', 'Settings', 'Input, camera, audio', () => openMenu('settings'), 'blue')
+        gbtn('▶', 'Play', 'Sunset Arena - Solo drift', () => openMenu('maps'), 'primary'),
+        gbtn('◆', 'Shop', 'Buy new cars with banked cash', () => openMenu('shop')),
+        gbtn('■', 'Garage', 'Tune, paint, and set stance', () => openMenu('edit')),
+        gbtn('●', 'Multiplayer', 'Split-screen, 2 to 4 players', () => openMenu('mpsetup'), 'blue'),
+        gbtn('▲', 'Settings', 'Input, camera, audio', () => openMenu('settings'), 'blue')
       )
     )
   );
   footSet(
-    mStatus(`${carDef.name} · class ${tier + 1} (${TIERS[tier].name}) · ${Math.round(stats.top * 3.6)} km/h`),
-    ran ? sbtn('↩ Resume', closeMenu, 'blue') : null
+    mStatus(`${carDef.name} - class ${tier + 1} (${TIERS[tier].name}) - ${Math.round(stats.top * 3.6)} km/h`),
+    ran ? sbtn('Resume', closeMenu, 'blue') : null
   );
 }
-function renderHomeTitleFix() { /* no-op, kept for symmetry */ }
 
 const tog = (label, hint, get, set) => {
   const b = h('button', { class: 'tog' + (get() ? ' on' : ''), type: 'button', role: 'switch', 'aria-checked': String(!!get()), 'aria-label': label, onclick: () => {
@@ -577,7 +807,6 @@ function setPhoto(v) {
   if (v && touchUI) showTip('Tap left / right to bounce the suspension');
 }
 
-/* ------------- SETTINGS ------------- */
 function renderSettings() {
   const secs = [];
   if (touchUI) {
@@ -595,16 +824,16 @@ function renderSettings() {
       h('div', { class: 'wheelrow', style: 'display:flex;align-items:center;gap:16px;margin-top:12px' },
         wheelEl,
         h('div', { style: 'flex:1' },
-          h('div', { class: 'row', style: 'display:flex;gap:8px' }, sbtn('↻ Recenter', () => { recenter(); upd(); }, 'blue')),
+          h('div', { class: 'row', style: 'display:flex;gap:8px' }, sbtn('Recenter', () => { recenter(); upd(); }, 'blue')),
           status))
     ));
   } else {
     secs.push(mSec('Keyboard',
       h('div', { class: 'ctl' },
         h('div', { class: 'hint', style: 'line-height:2' },
-          'W / S  gas & brake   ·   A / D  steer', h('br'),
-          'Space  handbrake   ·   Shift  boost   ·   E  clutch kick', h('br'),
-          '1 / 2 / 3  speed class   ·   Esc  menu')
+          'W / S  gas & brake   -   A / D  steer', h('br'),
+          'Space  handbrake   -   Shift  boost', h('br'),
+          '1 / 2 / 3  speed class   -   Esc  menu')
       )
     ));
   }
@@ -618,8 +847,8 @@ function renderSettings() {
   if (touchUI) game.push(tog('Vibration', 'Buzz on crashes.', () => save.set.vib, v => { save.set.vib = v; persist(); if (v) navigator.vibrate?.(30); }));
   secs.push(mSec('Gameplay', ...game));
 
-  const acts = [sbtn('↻ Reset car', () => { reset(); closeMenu(); }, 'blue')];
-  if (document.fullscreenEnabled) acts.push(sbtn('⛶ Fullscreen', () => { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {}); }, 'blue'));
+  const acts = [sbtn('Reset car', () => { reset(); closeMenu(); }, 'blue')];
+  if (document.fullscreenEnabled) acts.push(sbtn('Fullscreen', () => { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {}); }, 'blue'));
   secs.push(mSec('Actions', h('div', { class: 'chips' }, ...acts)));
 
   mLeft.replaceChildren(
@@ -628,10 +857,10 @@ function renderSettings() {
       ...secs
     )
   );
-  footSet(mStatus(`${touchUI ? 'Touch input detected' : 'Keyboard + mouse'}`), sbtn('← Back', () => openMenu('home')));
+  footSet(mStatus(`${touchUI ? 'Touch input detected' : 'Keyboard + mouse'}`), sbtn('Back', () => openMenu('home')));
 }
 
-/* ------------- MAPS / MODES ------------- */
+/* ---- maps / modes ---- */
 const MAPS = [
   { name: 'Sunset Arena', desc: 'Asphalt bowl, tower island, tyre stacks.', open: true },
   { name: 'Neon Docks', desc: 'Harbour lanes under the cranes.', open: false },
@@ -648,9 +877,9 @@ function renderMaps() {
         else openMenu('modes');
       }
     },
-      h('span', { class: 'm-thumb t' + (i + 1) }, locked ? '🔒' : '🏁'),
+      h('span', { class: 'm-thumb t' + (i + 1) }, locked ? 'LOCKED' : 'PLAY'),
       h('span', { class: 'm-info' }, h('b', {}, mapDef.name), h('span', {}, mapDef.desc)),
-      h('span', { class: 'm-go' }, locked ? 'COMING SOON' : 'SELECT ▶')
+      h('span', { class: 'm-go' }, locked ? 'COMING SOON' : 'SELECT')
     );
   });
   mLeft.replaceChildren(
@@ -660,30 +889,30 @@ function renderMaps() {
       h('div', { class: 'm-list' }, ...cards)
     )
   );
-  footSet(mStatus('More maps coming in future updates.'), sbtn('← Back', () => openMenu('home')));
+  footSet(mStatus('More maps coming in future updates.'), sbtn('Back', () => openMenu('home')));
 }
 function renderModes() {
   mLeft.replaceChildren(
     h('div', { class: 'm-screen' },
-      mHead('SUNSET ', h('span', {}, 'ARENA')),
+      mHead(h('span', {}, 'SUNSET '), h('span', {}, 'ARENA')),
       h('p', { class: 'm-sub' }, 'How do you want to drive?'),
       h('div', { class: 'm-actions' },
-        gbtn('🏁', 'Solo drift', 'Score pads, combos, ghost races', () => closeMenu(), 'primary'),
-        gbtn('👥', 'Multiplayer', 'Split-screen, 2 to 4 players', () => openMenu('mpsetup'), 'blue')
+        gbtn('▶', 'Solo drift', 'Score pads, combos, ghost races', () => closeMenu(), 'primary'),
+        gbtn('●', 'Multiplayer', 'Split-screen, 2 to 4 players', () => openMenu('mpsetup'), 'blue')
       )
     )
   );
-  footSet(mStatus(`Class ${tier + 1} · ${TIERS[tier].name} · ${Math.round(stats.top * 3.6)} km/h`), sbtn('← Back', () => openMenu('maps')));
+  footSet(mStatus(`Class ${tier + 1} - ${TIERS[tier].name} - ${Math.round(stats.top * 3.6)} km/h`), sbtn('Back', () => openMenu('maps')));
 }
 
-/* ------------- SHOP ------------- */
+/* ---- shop ---- */
 let shopSel = null, shopMsg = '';
 function renderShop() {
   const sel = CAR_DEFS[shopSel], owned = save.owned.includes(sel.id);
   const cards = CAR_ORDER.map(id => {
     const d = CAR_DEFS[id], own = save.owned.includes(id);
     const equipped = id === save.car;
-    const status = equipped ? '● Equipped' : own ? '✓ Owned' : '$' + d.price.toLocaleString();
+    const status = equipped ? 'Equipped' : own ? 'Owned' : '$' + d.price.toLocaleString();
     return h('button', {
       class: 'card' + (id === shopSel ? ' sel' : ''), type: 'button',
       onclick: () => { shopSel = id; shopMsg = ''; setModel(d, paintOf(id), tuneOf(id)); keepScroll(renderShop); }
@@ -704,14 +933,14 @@ function renderShop() {
   updateMenuTopBar();
 
   const act = owned
-    ? (sel.id === save.car ? sbtn('● Equipped', () => {}, 'dis') : sbtn('▶ Equip', () => { equip(sel.id); shopMsg = ''; keepScroll(renderShop); }, 'primary'))
-    : sbtn(`Buy · $${sel.price.toLocaleString()}`, () => buy(sel.id), 'primary');
-  const sell = owned && sel.price > 0 ? sbtn(`Sell · $${Math.floor(sel.price * 0.5).toLocaleString()}`, () => sellCar(sel.id), 'red') : null;
+    ? (sel.id === save.car ? sbtn('Equipped', () => {}, 'dis') : sbtn('Equip', () => { equip(sel.id); shopMsg = ''; keepScroll(renderShop); }, 'primary'))
+    : sbtn(`Buy - $${sel.price.toLocaleString()}`, () => buy(sel.id), 'primary');
+  const sell = owned && sel.price > 0 ? sbtn(`Sell - $${Math.floor(sel.price * 0.5).toLocaleString()}`, () => sellCar(sel.id), 'red') : null;
   footSet(
-    mStatus(shopMsg || (owned ? (sel.id === save.car ? 'Currently equipped.' : 'Owned — equip or sell.') : `Price $${sel.price.toLocaleString()}`)),
+    mStatus(shopMsg || (owned ? (sel.id === save.car ? 'Currently equipped.' : 'Owned - equip or sell.') : `Price $${sel.price.toLocaleString()}`)),
     sell,
     act,
-    sbtn('← Back', () => openMenu('home'))
+    sbtn('Back', () => openMenu('home'))
   );
 }
 function buy(id) {
@@ -731,7 +960,6 @@ function sellCar(id) {
   persist(); keepScroll(renderShop); updateMenuTopBar();
 }
 
-/* ------------- STATS SIDE PANEL ------------- */
 function renderStats(def, t) {
   const s = derive(TIERS[tier], def, t), st = derive(TIERS[tier], def, defaultTune(def));
   const rows = Object.entries(s.ratings).map(([k, v]) => {
@@ -744,14 +972,13 @@ function renderStats(def, t) {
   });
   mRight.replaceChildren(
     h('h3', {}, def.name),
-    h('div', { class: 'dim' }, `Class ${tier + 1} · ${TIERS[tier].name}`),
+    h('div', { class: 'dim' }, `Class ${tier + 1} - ${TIERS[tier].name}`),
     ...rows,
     h('div', { class: 'bal' }, 'Balance: ', h('b', {}, s.balance)),
     h('div', { class: 'dim', style: 'margin-top:6px' }, `${Math.round(s.top * 3.6)} km/h top speed`)
   );
 }
 
-/* ------------- EDIT CAR ------------- */
 const fmt = (it, v) => (v > 0 && it.min < 0 ? '+' : '') + v.toFixed(it.step < 0.1 ? 2 : it.step < 1 ? 1 : 0) + it.unit;
 function setTune(key, v) {
   tune[key] = v; save.tune[carDef.id] = { ...tune }; persist();
@@ -797,13 +1024,13 @@ function renderEdit() {
   );
   renderStats(carDef, tune);
   footSet(
-    mStatus(`${carDef.name} · ${save.owned.length} car${save.owned.length === 1 ? '' : 's'} owned`),
-    sbtn('↻ Stock', () => { tune = defaultTune(carDef); save.tune[carDef.id] = { ...tune }; persist(); applyModel(tune); recalc(); keepScroll(renderEdit); }, 'blue'),
-    sbtn('← Back', () => openMenu('home'))
+    mStatus(`${carDef.name} - ${save.owned.length} car${save.owned.length === 1 ? '' : 's'} owned`),
+    sbtn('Stock', () => { tune = defaultTune(carDef); save.tune[carDef.id] = { ...tune }; persist(); applyModel(tune); recalc(); keepScroll(renderEdit); }, 'blue'),
+    sbtn('Back', () => openMenu('home'))
   );
 }
 
-/* ------------- MULTIPLAYER SETUP ------------- */
+/* ---- multiplayer setup ---- */
 const mpCfg = { mode: 'duel', n: 2, first: 3, cls: 1, cars: [save.car, 'corsa', 'muscle', 'rallye'], ...(save.mp || {}) };
 mpCfg.cars = mpCfg.cars.map(id => (CAR_DEFS[id] ? id : 'hachi'));
 const saveMp = () => { save.mp = { ...mpCfg }; persist(); };
@@ -812,14 +1039,14 @@ const padList = () => (navigator.getGamepads ? [...navigator.getGamepads()].filt
 function renderMpSetup() {
   const cfg = mpCfg, again = () => keepScroll(renderMpSetup);
   const modes = [
-    ['duel', 'Side-Hit Duel', '💥', "Ram the SIDE of a rival's car to score. Head-ons and nudges don't count. First to the target wins."],
-    ['snake', 'Orb Snake', '🟢', "Grab orbs to grow a tail of car copies. Hit someone else's tail and you're out. Last car rolling wins the round."]
-  ].map(([id, name, icon, desc]) => h('button', {
+    ['duel', 'Side-Hit Duel', 'Ram the side of a rival car to score. Head-ons and nudges do not count. First to the target wins.'],
+    ['snake', 'Orb Snake', 'Grab orbs to grow a tail of car copies. Hit someone else tail and you are out. Last car rolling wins the round.']
+  ].map(([id, name, desc]) => h('button', {
     class: 'card' + (cfg.mode === id ? ' sel' : ''), type: 'button',
     onclick: () => { cfg.mode = id; cfg.first = id === 'duel' ? 3 : 2; saveMp(); again(); }
   },
-    h('span', { class: 'cname' }, icon + '  ' + name),
-    h('span', { class: 'ctag' }, cfg.mode === id ? '● Selected' : 'Choose'),
+    h('span', { class: 'cname' }, name),
+    h('span', { class: 'ctag' }, cfg.mode === id ? 'Selected' : 'Choose'),
     h('span', { class: 'cdesc' }, desc)));
 
   const carBtn = (i, d) => h('button', {
@@ -831,7 +1058,7 @@ function renderMpSetup() {
       cfg.cars[i] = CAR_ORDER[(k + d + CAR_ORDER.length) % CAR_ORDER.length];
       saveMp(); again();
     }
-  }, h('span', { class: 'tx' }, h('span', {}, d < 0 ? '◀' : '▶')));
+  }, h('span', { class: 'tx' }, h('span', {}, d < 0 ? '<' : '>')));
 
   const pads = padList().length;
   const players = Array.from({ length: cfg.n }, (_, i) => h('div', { class: 'prow' },
@@ -840,7 +1067,7 @@ function renderMpSetup() {
     carBtn(i, -1),
     h('span', { class: 'pcar' }, CAR_DEFS[cfg.cars[i]].name),
     carBtn(i, 1),
-    h('span', { class: 'pkeys' }, KEYMAPS[i].name + (pads > i ? '  ·  🎮 pad connected' : ''))
+    h('span', { class: 'pkeys' }, KEYMAPS[i].name + (pads > i ? '  -  gamepad connected' : ''))
   ));
 
   const secs = [
@@ -848,30 +1075,29 @@ function renderMpSetup() {
     mSec('Match',
       segRow('Players', 'Split-screen on one device.', ['2', '3', '4'], () => cfg.n - 2, i => { cfg.n = i + 2; saveMp(); again(); }),
       segRow('First to', 'Rounds needed to win.', ['1', '2', '3'], () => cfg.first - 1, i => { cfg.first = i + 1; saveMp(); }),
-      segRow('Speed class', 'Same stats for everybody — it stays fair.', TIERS.map((t, i) => `${i + 1} · ${t.name}`), () => cfg.cls, i => { cfg.cls = i; saveMp(); })
+      segRow('Speed class', 'Same stats for everybody - it stays fair.', TIERS.map((t, i) => `${i + 1} - ${t.name}`), () => cfg.cls, i => { cfg.cls = i; saveMp(); })
     ),
     mSec('Players', ...players,
       h('div', { class: 'hint', style: 'margin-top:10px;font-size:12px;opacity:.65;line-height:1.45' },
         touchUI
-          ? 'On a phone, P1 uses the touchscreen. Connect Bluetooth gamepads for the others.'
-          : 'Share the keyboard, or plug in gamepads (stick steers, triggers drive, A = handbrake).'))
+          ? 'On a phone, P1 uses tilt or the on-screen zones. Connect Bluetooth gamepads for the others.'
+          : 'Share the keyboard, or plug in gamepads (stick steers, triggers drive, A is handbrake).'))
   ];
 
   mLeft.replaceChildren(
     h('div', { class: 'm-screen' },
       mHead('MULTIPLAYER'),
-      h('p', { class: 'm-sub' }, 'Split-screen for two to four players on one device.'),
+      h('p', { class: 'm-sub' }, 'Split-screen for two to four players on one device. Controls for each player stay on screen during the match.'),
       ...secs
     )
   );
   footSet(
-    mStatus(`${cfg.n} players · first to ${cfg.first} · class ${cfg.cls + 1}`),
-    sbtn('← Back', () => openMenu('modes')),
-    sbtn('Start ▶', startMP, 'primary')
+    mStatus(`${cfg.n} players - first to ${cfg.first} - class ${cfg.cls + 1}`),
+    sbtn('Back', () => openMenu('modes')),
+    sbtn('Start', startMP, 'primary')
   );
 }
 
-/* ------------- PAUSE / MATCH END ------------- */
 function renderPause() {
   mLeft.replaceChildren(
     h('div', { class: 'm-overlay' },
@@ -881,7 +1107,7 @@ function renderPause() {
         h('div', { class: 'm-actions' },
           gbtn('▶', 'Resume', null, closeMenu, 'primary'),
           gbtn('↻', 'Restart match', null, startMP),
-          gbtn('🔊', save.set.mute ? 'Sound: off' : 'Sound: on', null, () => { setMute(!save.set.mute); renderPause(); }, 'blue'),
+          gbtn('♪', save.set.mute ? 'Sound: off' : 'Sound: on', null, () => { setMute(!save.set.mute); renderPause(); }, 'blue'),
           gbtn('✕', 'Quit to menu', null, quitMP, 'red')
         )
       )
@@ -893,8 +1119,8 @@ function renderMpEnd() {
   mLeft.replaceChildren(
     h('div', { class: 'm-overlay' },
       h('div', { class: 'pause-card' },
-        h('h1', { class: 'm-title', style: 'color:' + hex6(PCOLORS[w]) }, PNAMES[w] + ' WINS!'),
-        h('p', { class: 'm-sub', style: 'text-align:left;max-width:none' }, sc.map((v, i) => `${PNAMES[i]}  ${v}`).join('   ·   ')),
+        h('h1', { class: 'm-title', style: 'color:' + hex6(PCOLORS[w]) }, PNAMES[w] + ' WINS'),
+        h('p', { class: 'm-sub', style: 'text-align:left;max-width:none' }, sc.map((v, i) => `${PNAMES[i]}  ${v}`).join('   -   ')),
         h('div', { class: 'm-actions' },
           gbtn('↻', 'Rematch', null, startMP, 'primary'),
           gbtn('✕', 'Quit to menu', null, quitMP, 'red')
@@ -925,7 +1151,6 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyP') setPhoto(!photo);
   if (e.code === 'KeyG') setWet(!wet);
   if (e.code === 'KeyT') setTimed(mode === 'free');
-  if (e.code === 'KeyE') kick();
   if (e.code === 'KeyM') setMute(!save.set.mute);
   if (e.code.startsWith('Digit') && TIERS[+e.code.slice(5) - 1]) setTier(+e.code.slice(5) - 1);
   if (photo && !e.repeat) {
@@ -950,7 +1175,6 @@ addEventListener('wheel', e => { if (menu && !e.target.closest('#mLeft, #mRight,
 
 const D2R_ = Math.PI / 180;
 
-/* ---- top bar cog ---- */
 $('mCog').addEventListener('click', () => { if (menu === 'settings') openMenu('home'); else openMenu('settings'); });
 
 /* ---- dial speedo ---- */
@@ -1028,7 +1252,7 @@ function applyCtrl() {
 }
 function showTip(text) {
   const el = $('tip');
-  el.textContent = text || (save.set.ctrl === 'tilt' ? 'Tilt to steer · Left = BRAKE · Right = GAS' : 'Steer ◀ ▶ · GAS · BRAKE');
+  el.textContent = text || (save.set.ctrl === 'tilt' ? 'Tilt to steer - Left half is BRAKE - Right half is GAS' : 'Steer - GAS - BRAKE');
   el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
 }
 
@@ -1054,7 +1278,6 @@ hold($('tL'), v => { touch.left = v ? 1 : 0; });
 hold($('tR'), v => { touch.right = v ? 1 : 0; });
 hold($('bHB'), v => { touch.hb = v ? 1 : 0; });
 hold($('bBoost'), v => { touch.boost = v ? 1 : 0; });
-hold($('bKick'), () => {}, () => { if (!menu && !photo) kick(); });
 addEventListener('contextmenu', e => { if (touchUI) e.preventDefault(); });
 addEventListener('pointerdown', e => { if (e.pointerType === 'touch' && !touchUI) { touchUI = true; applyCtrl(); } }, { capture: true });
 const reCal = () => { calibrateNext = true; };
@@ -1185,7 +1408,7 @@ function crash(impact) {
   if (touchUI && save.set.vib && navigator.vibrate) navigator.vibrate(Math.min(60, 15 + impact * 3));
   SUS.hv -= impact * 0.02; SUS.pv += (Math.random() - 0.5) * impact * 0.04;
   if (pending > 200 || impact > 10) slowT = 0.35;
-  if (pending > 1) toast('CRASH  −' + Math.floor(pending), true);
+  if (pending > 1) toast('CRASH  -' + Math.floor(pending), true);
   pending = 0; driftT = 0; gap = 0;
 }
 
@@ -1199,11 +1422,7 @@ let called = 0, nearCd = 0, wallCd = 0;
 function unlock(id) {
   if (got[id]) return; got[id] = 1;
   try { localStorage.setItem('driftrun-ach', JSON.stringify(got)); } catch {}
-  toast('🏆 ' + ACHS[id]);
-}
-function kick() {
-  if (S.sp < 8) return;
-  S.loose = 1; S.h += (S.steer >= 0 ? 1 : -1) * 0.12; S.vx += Math.sin(S.h) * 3; S.vz += Math.cos(S.h) * 3; shake = 0.15;
+  toast('ACHIEVEMENT: ' + ACHS[id]);
 }
 function finishRun() {
   if (pending > 0) bank(1);
@@ -1253,7 +1472,7 @@ const ARROWS = ['↑', '↖', '←', '↙', '↓', '↘', '→', '↗'];
 const arrow = (x, z) => ARROWS[(Math.round(wrap(Math.atan2(x - S.x, z - S.z) - S.h) / (Math.PI / 4)) + 8) % 8];
 function hud() {
   const hz = ZONES[zoneI];
-  $('obj').textContent = (mode === 'timed' ? `⏱ ${Math.max(0, Math.ceil(timeLeft))}s · ${runScore} pts · ` : '') + `Gold zone ${arrow(hz.x, hz.z)} ${Math.round(Math.hypot(hz.x - S.x, hz.z - S.z))}m · Bank pad ${arrow(PAD.x, PAD.z)} ${Math.round(Math.hypot(PAD.x - S.x, PAD.z - S.z))}m`;
+  $('obj').textContent = (mode === 'timed' ? `${Math.max(0, Math.ceil(timeLeft))}s · ${runScore} pts · ` : '') + `Gold zone ${arrow(hz.x, hz.z)} ${Math.round(Math.hypot(hz.x - S.x, hz.z - S.z))}m · Bank pad ${arrow(PAD.x, PAD.z)} ${Math.round(Math.hypot(PAD.x - S.x, PAD.z - S.z))}m`;
   $('score').textContent = Math.floor(pending);
   $('mult').textContent = pending > 0 ? 'x' + mult.toFixed(1) + (gap > 0 ? '  bank in ' + Math.max(0, 4 - gap).toFixed(1) + 's' : '') : '';
   $('angle').textContent = Math.round(Math.abs(S.slip) * 57.3);
@@ -1338,10 +1557,13 @@ function buildMpHud() {
   mp.hud = [];
   for (let i = 0; i < mp.cfg.n; i++) {
     const el = h('div', { class: 'pv', 'data-i': String(i) },
-      h('div', { class: 'pchip', style: 'background:' + hex6(PCOLORS[i]) }, PNAMES[i]), h('div', { class: 'pips' }), h('div', { class: 'psub' }),
-      h('div', { class: 'phint' }, KEYMAPS[i].name + (i === 0 && touchUI ? '  ·  or touch / tilt' : '')), h('div', { class: 'pout' }, 'OUT!'));
+      h('div', { class: 'pchip', style: 'background:' + hex6(PCOLORS[i]) }, PNAMES[i]),
+      h('div', { class: 'pips' }),
+      h('div', { class: 'psub' }),
+      h('div', { class: 'phint' }, KEYMAPS[i].name + (i === 0 && touchUI ? '  -  or tilt / zones' : '')),
+      h('div', { class: 'pout' }, 'OUT'));
     mpEl.append(el);
-    mp.hud.push({ el, pips: el.querySelector('.pips'), sub: el.querySelector('.psub'), hint: el.querySelector('.phint'), pk: '', sk: '', dead: false, hintOn: true });
+    mp.hud.push({ el, pips: el.querySelector('.pips'), sub: el.querySelector('.psub'), hint: el.querySelector('.phint'), pk: '', sk: '', dead: false });
   }
   if (mp.cfg.n === 3) { mp.board = h('div', { class: 'pv board' }); mpEl.append(mp.board); }
   mp.layKey = '';
@@ -1357,20 +1579,18 @@ function mpHudUpdate() {
     if (n === 2) { if (vps[1].x > 0) line(`left:${W / 2 - 3}px;top:0;width:6px;height:100%`); else line(`left:0;top:${H / 2 - 3}px;width:100%;height:6px`); }
     else { line(`left:${W / 2 - 3}px;top:0;width:6px;height:100%`); line(`left:0;top:${H / 2 - 3}px;width:100%;height:6px`); }
   }
-  const age = performance.now() - mp.started;
   m.cars.forEach((c, i) => {
     const hd = mp.hud[i];
     const pk = '●'.repeat(m.scores[i]) + '○'.repeat(Math.max(0, m.first - m.scores[i]));
     if (hd.pk !== pk) { hd.pk = pk; hd.pips.textContent = pk; }
-    const sk = m.mode === 'snake' ? `Cars ${c.segs + 1} · Orbs ${c.orbs}` : '';
+    const sk = m.mode === 'snake' ? `Cars ${c.segs + 1} - Orbs ${c.orbs}` : '';
     if (hd.sk !== sk) { hd.sk = sk; hd.sub.textContent = sk; }
     if (hd.dead === c.alive) { hd.dead = !c.alive; hd.el.classList.toggle('dead', hd.dead); }
-    const on = age < 9000; if (hd.hintOn !== on) { hd.hintOn = on; hd.hint.style.opacity = on ? 1 : 0; }
   });
   if (mp.board) {
     const bk = m.scores.join(',') + '|' + m.cars.map(c => (c.alive ? 1 : 0)).join('');
     if (mp.bk !== bk) { mp.bk = bk;
-      mp.board.replaceChildren(h('div', { class: 'bt' }, 'SCORE'), ...m.cars.map((c, i) => h('div', { class: 'brow' }, h('i', { class: 'pdot', style: 'background:' + hex6(PCOLORS[i]) }), `${PNAMES[i]}  ${'●'.repeat(m.scores[i])}${'○'.repeat(Math.max(0, m.first - m.scores[i]))}`, c.alive ? '' : '  ✖'))); }
+      mp.board.replaceChildren(h('div', { class: 'bt' }, 'SCORE'), ...m.cars.map((c, i) => h('div', { class: 'brow' }, h('i', { class: 'pdot', style: 'background:' + hex6(PCOLORS[i]) }), `${PNAMES[i]}  ${'●'.repeat(m.scores[i])}${'○'.repeat(Math.max(0, m.first - m.scores[i]))}`, c.alive ? '' : '  OUT'))); }
   }
 }
 
@@ -1396,11 +1616,11 @@ function handleMpEvents(evs) {
   for (const e of evs) {
     if (e.type === 'round') showBanner('ROUND ' + e.round, 1.1);
     else if (e.type === 'count') { showBanner(String(e.n), 0.9); sfx('click'); }
-    else if (e.type === 'go') { showBanner('GO!', 0.8, '#2fe3a0'); sfx('pop'); }
-    else if (e.type === 'score') { showBanner(PNAMES[e.attacker] + ' SCORES!', 2.4, col(e.attacker)); sfx('score'); if (touchUI && save.set.vib && navigator.vibrate) navigator.vibrate(60); }
-    else if (e.type === 'kill') { showBanner(PNAMES[e.victim] + ' IS OUT!', 1.6, col(e.victim)); hitS = true; }
+    else if (e.type === 'go') { showBanner('GO', 0.8, '#2fe3a0'); sfx('pop'); }
+    else if (e.type === 'score') { showBanner(PNAMES[e.attacker] + ' SCORES', 2.4, col(e.attacker)); sfx('score'); if (touchUI && save.set.vib && navigator.vibrate) navigator.vibrate(60); }
+    else if (e.type === 'kill') { showBanner(PNAMES[e.victim] + ' IS OUT', 1.6, col(e.victim)); hitS = true; }
     else if (e.type === 'grow') { if (e.segs > 0 && e.segs % 4 === 0) sfx('grow'); }
-    else if (e.type === 'roundEnd' && m.mode === 'snake') showBanner(e.winner >= 0 ? PNAMES[e.winner] + ' WINS THE ROUND!' : 'DRAW!', 2.4, e.winner >= 0 ? col(e.winner) : '');
+    else if (e.type === 'roundEnd' && m.mode === 'snake') showBanner(e.winner >= 0 ? PNAMES[e.winner] + ' WINS THE ROUND' : 'DRAW', 2.4, e.winner >= 0 ? col(e.winner) : '');
     else if (e.type === 'matchEnd') openMenu('mpend');
     else if (e.type === 'bump') { e.a.sus.hv -= e.closing * 0.02; e.b.sus.hv -= e.closing * 0.02; hitS = true; }
     else if (e.type === 'wall') { e.car.sus.hv -= e.impact * 0.015; if (e.impact > 9) hitS = true; }
@@ -1424,6 +1644,8 @@ function mpSync(dt) {
       w.pivot.rotation.y = (w.front ? c.steer * 0.5 : 0) - w.sx * hd.toe[w.axle];
       w.roll.rotation.x += (c.vf / w.R) * dt;
     }
+    // steering wheel turns with the driver's input
+    if (hd.swSpin) hd.swSpin.rotation.z = -c.steer * 2.3;
     if (c.alive && m.phase !== 'count' && ((Math.abs(c.slip) > 0.2 && c.sp > 7) || (c.hb && c.sp > 6))) mpSkid(c, hd, dt);
     if (mp.pools[i]) {
       const poses = c.alive ? segmentPoses(c) : [];
@@ -1508,6 +1730,22 @@ function visuals(dt) {
   for (const w of m.wheels) {
     w.pivot.rotation.y = (w.front ? steerA : 0) - w.sx * m.toe[w.axle];
     if (!inMenu && !photo) w.roll.rotation.x += (S.vf / w.R) * dt;
+  }
+
+  // steering wheel turns with the driver input during play
+  if (m.swSpin) m.swSpin.rotation.z = inMenu ? 0 : -S.steer * 2.3;
+
+  // the seated driver hides in the garage so the standing crew figure takes over
+  if (m.driverRig) m.driverRig.visible = !inMenu;
+  if (m.standFig) {
+    m.standFig.visible = inMenu;
+    if (inMenu) {
+      const tt = performance.now() / 1000;
+      m.standFig.rotation.y = Math.PI / 2 + Math.sin(tt * 0.42) * 0.15;
+      m.standFig.rotation.z = Math.sin(tt * 0.68) * 0.03;
+      m.standFig.rotation.x = Math.sin(tt * 0.51 + 1.2) * 0.012;
+      m.standFig.position.y = Math.sin(tt * 1.1) * 0.008;
+    }
   }
 
   const skidding = !inMenu && !photo && ((Math.abs(S.slip) > 0.2 && S.sp > 7) || (S.hb && S.sp > 6));
