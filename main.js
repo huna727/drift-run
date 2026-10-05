@@ -2,8 +2,12 @@ import * as THREE from 'three';
 import { CAR_DEFS, CAR_ORDER, bodyLoft, cabinLoft, sampleBody, halfWidthAt, sampleCab, wheelLayout } from './cars.js';
 import { MP_R, MAX_SEG, MAX_ORBS, PCOLORS, PNAMES, KEYMAPS, layout as vpLayout, createMatch, updateMatch, arenaR, segmentPoses, susStep } from './multi.js';
 import { TIERS, COMPOUNDS, TUNE_GROUPS, PRESETS, defaultTune, derive } from './tuning.js';
-import { createNPCField, updateNPCs } from './npc.js';
 import { createRain, createSnow, clearWeather } from './weather.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { resolveBody, surfaceDist } from './collision.js';
+import { buildCity } from './world_city.js';
+import { buildCargo } from './world_cargo.js';
+import { buildPark } from './world_park.js';
 
 let WALL = 150, ISL = 38;
 const CR = 1.6;
@@ -38,13 +42,13 @@ const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 30
 const M = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, flatShading: true, roughness: 0.9, metalness: 0, ...o });
 
 const sky = new THREE.Mesh(
-  new THREE.SphereGeometry(1500, 16, 10),
+  new THREE.SphereGeometry(1500, 48, 32),
   new THREE.MeshBasicMaterial({ color: 0x4f93e8, side: THREE.BackSide, fog: false, depthWrite: false })
 );
 scene.add(sky);
 
 function tintSky(c1, c2) {
-  const g = new THREE.SphereGeometry(1500, 16, 10), p = g.attributes.position, col = [];
+  const g = new THREE.SphereGeometry(1500, 48, 32), p = g.attributes.position, col = [];
   const a = new THREE.Color(c1), b = new THREE.Color(c2), c = new THREE.Color();
   for (let i = 0; i < p.count; i++) {
     c.copy(a).lerp(b, Math.pow(clamp(p.getY(i) / 1500, 0, 1), 0.6));
@@ -60,6 +64,15 @@ const hemi = new THREE.HemisphereLight(0xdfeeff, 0x6a7a5a, 1.15);
 const sun = new THREE.DirectionalLight(0xfff1d6, 2.6);
 sun.castShadow = false;
 scene.add(hemi, sun, sun.target);
+{ // image based lighting: gives glass, paint, water and metal something to reflect
+  const pm = new THREE.PMREMGenerator(renderer);
+  scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environmentIntensity = 0.55;
+  pm.dispose();
+}
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, near: 10, far: 260 });
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.06; sun.shadow.camera.updateProjectionMatrix();
 
 /* ================= TEXTURES ================= */
 const ROAD_TEX = (() => {
@@ -113,7 +126,6 @@ const SKID_TEX = (() => {
 
 /* ================= MAPS ================= */
 const MAPS = [
-  // ---- TRACK MAPS ----
   {
     id: 'sunset', name: 'Sunset Arena', category: 'track',
     desc: 'Long oval, two wide sweepers. A classic drift shape.',
@@ -169,10 +181,9 @@ const MAPS = [
     curb: true, poles: false, sun: 2.8, hemi: 1.0,
     track: [[0, 160], [110, 115], [120, 25], [35, 0], [120, -25], [110, -115], [0, -160], [-110, -115], [-120, -25], [-35, 0], [-120, 25], [-110, 115]],
   },
-  // ---- FREEROAM MAPS ----
   {
     id: 'city', name: 'Downtown', category: 'freeroam', kind: 'city',
-    desc: 'Grid of downtown streets, tall buildings, sidewalks full of people.',
+    desc: 'Grid of downtown streets, tall buildings, sidewalk lights.',
     sky: [0xb8d4ff, 0x4a7ac8], fog: 0xc8d8e8,
     terrain: 0x2a2e38, road: 0x40424a,
     mountains: [0x6a7a8a, 0x5a6a7a, 0x7a8a9a],
@@ -183,7 +194,7 @@ const MAPS = [
   },
   {
     id: 'cargo', name: 'Cargo Bay', category: 'freeroam', kind: 'cargo',
-    desc: 'Shipping container yard. Tight spaces, warehouse, and a maze of containers.',
+    desc: 'Shipping container yard. Tight spaces, warehouse, maze of containers.',
     sky: [0xc8d0d8, 0x5a6270], fog: 0xb0b8c0,
     terrain: 0x585c64, road: 0x484c54,
     mountains: [0x707884, 0x606872, 0x808894],
@@ -194,7 +205,7 @@ const MAPS = [
   },
   {
     id: 'park', name: 'City Park', category: 'freeroam', kind: 'park',
-    desc: 'Winding park paths, trees everywhere, a pond, and joggers.',
+    desc: 'Winding park paths, trees everywhere, a pond in the middle.',
     sky: [0xd0ecff, 0x6aa8e0], fog: 0xd8e8f4,
     terrain: 0x5a8a4a, road: 0x8a7a5a,
     mountains: [0x7a9a6a, 0x6a8a5a, 0x8aa87a],
@@ -211,20 +222,21 @@ let currentMap = MAPS[0];
 let trackSamples = [];
 let raceGateGroup = null;
 const OBST = [];
+const WORLD_UPDATERS = [];
+let FREE_SPAWN = { x: 0, z: -75, h: 0 };
 const ZONES = [];
 const PAD = { x: 0, z: 95, r: 8, mesh: null };
 let zoneI = 0, zoneT = 0;
-let npcField = [];
 let weather = null;
 
 function clearWorld() {
-  worldGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  worldGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.isInstancedMesh) o.dispose(); });
   worldGroup.clear();
   raceGateGroup = null;
   trackSamples = [];
   OBST.length = 0;
+  WORLD_UPDATERS.length = 0;
   ZONES.length = 0;
-  npcField = [];
   if (weather) { clearWeather(scene, weather); weather = null; }
 }
 
@@ -320,7 +332,6 @@ function buildTrackWorld(map) {
   ISL = map.island ? 38 : 0;
   ROAD_HALF = map.roadHalf;
 
-  // Terrain base
   const terrain = new THREE.Mesh(
     new THREE.CircleGeometry(WALL + 40, 40).rotateX(-Math.PI / 2),
     M(map.terrain, { roughness: 1.0, metalness: 0 })
@@ -328,7 +339,6 @@ function buildTrackWorld(map) {
   terrain.position.y = -0.02;
   worldGroup.add(terrain);
 
-  // Boundary underlay
   const underlay = new THREE.Mesh(
     new THREE.RingGeometry(WALL - 3, WALL + 4, 64).rotateX(-Math.PI / 2),
     new THREE.MeshBasicMaterial({ color: map.night ? 0x2a1440 : 0x2a2a2a })
@@ -336,7 +346,6 @@ function buildTrackWorld(map) {
   underlay.position.y = -0.01;
   worldGroup.add(underlay);
 
-  // Road
   const roadGeo = buildRoadGeometry(map.track, ROAD_HALF);
   const roadMat = new THREE.MeshStandardMaterial({
     map: ROAD_TEX, color: map.road,
@@ -345,12 +354,10 @@ function buildTrackWorld(map) {
   });
   worldGroup.add(new THREE.Mesh(roadGeo, roadMat));
 
-  // Curbing
   if (map.curb) worldGroup.add(buildCurbing(map.track, ROAD_HALF + 0.5));
 
   trackSamples = sampleRoad(map.track);
 
-  // Island
   if (map.island) {
     const isle = new THREE.Mesh(new THREE.CylinderGeometry(ISL - 1, ISL + 1.5, 3, 20), M(map.night ? 0x3a2a5a : 0x7a8398));
     isle.position.y = 1.5;
@@ -363,7 +370,6 @@ function buildTrackWorld(map) {
     worldGroup.add(isle, topM, tower, roof);
   }
 
-  // Fence
   {
     const c = document.createElement('canvas'); c.width = c.height = 64;
     const g = c.getContext('2d'); g.strokeStyle = map.night ? '#4ec8ff' : '#c8c8c8'; g.lineWidth = 3;
@@ -373,7 +379,6 @@ function buildTrackWorld(map) {
     fence.position.y = 3.5; worldGroup.add(fence);
   }
 
-  // Tyre wall ring
   {
     const N = 60;
     const tyre = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.9, 0.9, 0.55, 8), M(0x1a1a1e), N);
@@ -391,7 +396,6 @@ function buildTrackWorld(map) {
     worldGroup.add(tyre, stripe);
   }
 
-  // Obstacles off-road
   const onRoad = (x, z) => {
     const rr = (ROAD_HALF + 6) * (ROAD_HALF + 6);
     for (let i = 0; i < trackSamples.length; i++) {
@@ -434,7 +438,6 @@ function buildTrackWorld(map) {
     worldGroup.add(g);
   }
 
-  // Zones at 4 waypoints (on the road)
   for (let i = 0; i < 4; i++) {
     const idx = Math.floor(i / 4 * map.track.length);
     const [x, z] = map.track[idx];
@@ -445,7 +448,6 @@ function buildTrackWorld(map) {
     ZONES.push({ x, z, r: 14, mat, mesh });
   }
 
-  // Bank pad
   {
     const [x, z] = map.track[0];
     PAD.x = x; PAD.z = z;
@@ -454,7 +456,6 @@ function buildTrackWorld(map) {
     worldGroup.add(padMesh); PAD.mesh = padMesh;
   }
 
-  // Light poles
   if (map.poles) {
     const poleMat = M(0x4a4e58, { metalness: 0.6, roughness: 0.4 });
     const bulbMat = M(0xfff0c0, { emissive: 0xffe9a0, emissiveIntensity: 2.0 });
@@ -477,7 +478,6 @@ function buildTrackWorld(map) {
     }
   }
 
-  // Decor
   const decorFar = (x, z) => {
     const rr = (ROAD_HALF + 14) * (ROAD_HALF + 14);
     for (let i = 0; i < trackSamples.length; i++) {
@@ -531,7 +531,6 @@ function buildTrackWorld(map) {
     }
   }
 
-  // Mountains
   for (let i = 0; i < 14; i++) {
     const a = i / 14 * Math.PI * 2 + Math.random() * 0.25, r = 620 + Math.random() * 160, h = 140 + Math.random() * 160;
     const m = new THREE.Mesh(new THREE.ConeGeometry(100 + Math.random() * 80, h, 5), M(map.mountains[i % 3]));
@@ -540,7 +539,6 @@ function buildTrackWorld(map) {
     worldGroup.add(m);
   }
 
-  // Sky objects
   if (map.night) {
     const N = 120, stars = new THREE.InstancedMesh(new THREE.SphereGeometry(1.4, 3, 3), new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }), N);
     const d = new THREE.Object3D();
@@ -566,387 +564,6 @@ function buildTrackWorld(map) {
   }
 }
 
-/* ================= FREEROAM BUILDERS ================= */
-function buildCityWorld(map) {
-  WALL = map.wall;
-  ISL = 0;
-  ROAD_HALF = map.roadHalf;
-
-  // Big asphalt disc as ground
-  const ground = new THREE.Mesh(new THREE.CircleGeometry(WALL + 30, 48).rotateX(-Math.PI / 2), M(0x2e3238));
-  ground.position.y = -0.02;
-  worldGroup.add(ground);
-
-  // Grid of city blocks. Rows along x and z with streets between.
-  const blockW = 32, blockH = 32, streetW = 12;
-  const span = 3; // blocks per side from center
-  const buildings = [];
-  const streetMat = M(0x40444c, { roughness: 0.95 });
-  const bldgPalette = [0x6a7280, 0x8a8a92, 0x545a68, 0x7a6a5a, 0x5a6068, 0xa0a0a8];
-
-  for (let gx = -span; gx <= span; gx++) {
-    for (let gz = -span; gz <= span; gz++) {
-      const cx = gx * (blockW + streetW);
-      const cz = gz * (blockH + streetW);
-      const dist = Math.hypot(cx, cz);
-      if (dist > WALL - 25) continue;
-      // building height gradient toward center
-      const hMax = 26 + Math.random() * 22;
-      const h = Math.max(6, hMax - dist * 0.06);
-      const w = blockW * (0.6 + Math.random() * 0.25);
-      const dp = blockH * (0.6 + Math.random() * 0.25);
-      const col = bldgPalette[Math.floor(Math.random() * bldgPalette.length)];
-
-      const bMat = M(col, { roughness: 0.85, metalness: 0.1 });
-      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, dp), bMat);
-      b.position.set(cx, h / 2, cz);
-      worldGroup.add(b);
-      OBST.push({ x: cx, z: cz, r: Math.max(w, dp) * 0.55 });
-
-      // Windows — rows of emissive small planes on the front/back faces
-      const rows = Math.floor(h / 3);
-      const cols = Math.floor(w / 2.2);
-      const winMat = new THREE.MeshBasicMaterial({ color: 0xfff0b0, transparent: true, opacity: 0.7 });
-      const winGeo = new THREE.PlaneGeometry(1.1, 1.3);
-      const winInst = new THREE.InstancedMesh(winGeo, winMat, rows * cols * 2);
-      let wi = 0;
-      const d = new THREE.Object3D();
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          if (Math.random() < 0.35) continue;
-          const wx = cx + (c - (cols - 1) / 2) * 2.2;
-          const wy = 2 + r * 3;
-          // front
-          d.position.set(wx, wy, cz + dp / 2 + 0.01);
-          d.rotation.set(0, 0, 0); d.updateMatrix();
-          if (wi < winInst.count) winInst.setMatrixAt(wi++, d.matrix);
-          // back
-          d.position.set(wx, wy, cz - dp / 2 - 0.01);
-          d.rotation.set(0, Math.PI, 0); d.updateMatrix();
-          if (wi < winInst.count) winInst.setMatrixAt(wi++, d.matrix);
-        }
-      }
-      winInst.count = wi;
-      winInst.instanceMatrix.needsUpdate = true;
-      worldGroup.add(winInst);
-
-      // rooftop box (AC unit)
-      const rb = new THREE.Mesh(new THREE.BoxGeometry(w * 0.4, 1.4, dp * 0.4), M(0x4a4a52));
-      rb.position.set(cx, h + 0.7, cz);
-      worldGroup.add(rb);
-    }
-  }
-
-  // Street grid painted as boxes (flat strips)
-  const streetGeo = new THREE.PlaneGeometry(streetW, WALL * 2.2).rotateX(-Math.PI / 2);
-  for (let gx = -span - 1; gx <= span + 1; gx++) {
-    const s = new THREE.Mesh(streetGeo, streetMat);
-    s.position.set(gx * (blockW + streetW), 0.03, 0);
-    worldGroup.add(s);
-  }
-  const streetGeo2 = new THREE.PlaneGeometry(WALL * 2.2, streetW).rotateX(-Math.PI / 2);
-  for (let gz = -span - 1; gz <= span + 1; gz++) {
-    const s = new THREE.Mesh(streetGeo2, streetMat);
-    s.position.set(0, 0.03, gz * (blockH + streetW));
-    worldGroup.add(s);
-  }
-
-  // Road lines on the streets (dashes)
-  const lineMat = new THREE.MeshBasicMaterial({ color: 0xf4f4f4 });
-  for (let gx = -span - 1; gx <= span + 1; gx++) {
-    for (let i = -12; i <= 12; i++) {
-      const l = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 3).rotateX(-Math.PI / 2), lineMat);
-      l.position.set(gx * (blockW + streetW), 0.06, i * 6);
-      worldGroup.add(l);
-    }
-  }
-  for (let gz = -span - 1; gz <= span + 1; gz++) {
-    for (let i = -12; i <= 12; i++) {
-      const l = new THREE.Mesh(new THREE.PlaneGeometry(3, 0.4).rotateX(-Math.PI / 2), lineMat);
-      l.position.set(i * 6, 0.06, gz * (blockH + streetW));
-      worldGroup.add(l);
-    }
-  }
-
-  // Street lights at intersections
-  const poleMat = M(0x2a2d32, { metalness: 0.5, roughness: 0.5 });
-  const bulbMat = M(0xfff0c0, { emissive: 0xffe9a0, emissiveIntensity: 1.6 });
-  for (let gx = -span; gx <= span; gx++) {
-    for (let gz = -span; gz <= span; gz++) {
-      if ((gx + gz) % 2) continue;
-      const x = gx * (blockW + streetW) + (blockW + streetW) / 2;
-      const z = gz * (blockH + streetW) + (blockH + streetW) / 2;
-      if (Math.hypot(x, z) > WALL - 20) continue;
-      const p = new THREE.Group();
-      p.add(new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 7, 6), poleMat)).position.y = 3.5;
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.15, 0.15), poleMat);
-      arm.position.set(0.9, 6.9, 0); p.add(arm);
-      const bulb = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.15, 0.5), bulbMat);
-      bulb.position.set(1.8, 6.85, 0); p.add(bulb);
-      p.position.set(x, 0, z);
-      worldGroup.add(p);
-    }
-  }
-
-  // Fence
-  {
-    const c = document.createElement('canvas'); c.width = c.height = 64;
-    const g = c.getContext('2d'); g.strokeStyle = '#c8c8c8'; g.lineWidth = 3;
-    g.beginPath(); g.moveTo(0, 0); g.lineTo(64, 64); g.moveTo(64, 0); g.lineTo(0, 64); g.stroke();
-    const tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(180, 3);
-    const fence = new THREE.Mesh(new THREE.CylinderGeometry(WALL + 6, WALL + 6, 7, 80, 1, true), new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide }));
-    fence.position.y = 3.5; worldGroup.add(fence);
-  }
-
-  trackSamples = [];
-}
-
-function buildCargoWorld(map) {
-  WALL = map.wall;
-  ISL = 0;
-  ROAD_HALF = map.roadHalf;
-
-  // Concrete ground
-  const ground = new THREE.Mesh(new THREE.CircleGeometry(WALL + 30, 48).rotateX(-Math.PI / 2), M(0x4e525a, { roughness: 0.95 }));
-  ground.position.y = -0.02;
-  worldGroup.add(ground);
-
-  // A big open asphalt yard
-  const yard = new THREE.Mesh(new THREE.CircleGeometry(WALL - 10, 48).rotateX(-Math.PI / 2), M(0x3a3e46, { roughness: 0.95 }));
-  yard.position.y = 0.01;
-  worldGroup.add(yard);
-
-  // Container palette
-  const containerCols = [0xc23a2a, 0x2e6ab8, 0xe0a830, 0x2eaa5a, 0xa8a8a8, 0xd04060];
-  // Stack containers in rows. Leave gaps for driving through.
-  for (let i = 0; i < 40; i++) {
-    const cx = (Math.random() - 0.5) * (WALL - 30) * 1.6;
-    const cz = (Math.random() - 0.5) * (WALL - 30) * 1.6;
-    if (Math.hypot(cx, cz) < 22) continue;
-    if (Math.hypot(cx, cz) > WALL - 15) continue;
-
-    const stackH = 1 + Math.floor(Math.random() * 3);
-    const col = containerCols[Math.floor(Math.random() * containerCols.length)];
-    const rotY = Math.random() < 0.5 ? 0 : Math.PI / 2;
-    for (let k = 0; k < stackH; k++) {
-      const box = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.4, 6.1), M(col, { roughness: 0.9 }));
-      box.position.set(cx, 1.2 + k * 2.4, cz);
-      box.rotation.y = rotY;
-      worldGroup.add(box);
-      // corrugated detail strips
-      const detail = new THREE.Mesh(new THREE.BoxGeometry(2.42, 2.1, 6.12), M(col, { roughness: 0.9, flatShading: false }));
-      detail.material.color.offsetHSL(0, 0, 0.06);
-      detail.position.set(cx, 1.2 + k * 2.4, cz);
-      detail.rotation.y = rotY;
-      worldGroup.add(detail);
-    }
-    const r = rotY === 0 ? 3.2 : 4.2;
-    OBST.push({ x: cx, z: cz, r });
-  }
-
-  // Big warehouse on one side
-  {
-    const wh = new THREE.Group();
-    const wall = M(0x8a8a90, { roughness: 0.9 });
-    const roofM = M(0x565a60, { roughness: 0.9 });
-    const w = 22, h = 9, d = 32;
-    const back = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.6), wall); back.position.set(0, h / 2, -d / 2); wh.add(back);
-    const front = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.6), wall); front.position.set(0, h / 2, d / 2); wh.add(front);
-    const leftW = new THREE.Mesh(new THREE.BoxGeometry(0.6, h, d), wall); leftW.position.set(-w / 2, h / 2, 0); wh.add(leftW);
-    const rightW = new THREE.Mesh(new THREE.BoxGeometry(0.6, h, d), wall); rightW.position.set(w / 2, h / 2, 0); wh.add(rightW);
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(w + 1, 0.4, d + 1), roofM); roof.position.y = h; wh.add(roof);
-    // door
-    const door = new THREE.Mesh(new THREE.BoxGeometry(6, 6, 0.3), M(0x2a2d32));
-    door.position.set(0, 3, d / 2 + 0.15); wh.add(door);
-    wh.position.set(-WALL * 0.55, 0, 0);
-    wh.rotation.y = Math.PI / 2;
-    worldGroup.add(wh);
-    OBST.push({ x: -WALL * 0.55, z: 0, r: 11 });
-  }
-
-  // Cranes
-  {
-    const cMat = M(0xc8a020, { roughness: 0.7, metalness: 0.3 });
-    const cMat2 = M(0x4a4a52);
-    for (let i = 0; i < 4; i++) {
-      const a = i / 4 * Math.PI * 2 + 0.3;
-      const r = WALL - 25;
-      const cx = Math.sin(a) * r, cz = Math.cos(a) * r;
-      const cg = new THREE.Group();
-      const mast = new THREE.Mesh(new THREE.BoxGeometry(2, 32, 2), cMat);
-      mast.position.y = 16; cg.add(mast);
-      const boom = new THREE.Mesh(new THREE.BoxGeometry(2, 1.5, 36), cMat);
-      boom.position.set(0, 32, 12); cg.add(boom);
-      const cab = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.5, 2.5), cMat2);
-      cab.position.set(0, 32, -4); cg.add(cab);
-      const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 20, 4), cMat2);
-      cable.position.set(0, 22, 24); cg.add(cable);
-      const hook = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.4, 1.4), cMat2);
-      hook.position.set(0, 12, 24); cg.add(hook);
-      cg.position.set(cx, 0, cz);
-      cg.rotation.y = a + Math.PI / 2;
-      worldGroup.add(cg);
-      OBST.push({ x: cx, z: cz, r: 2.2 });
-    }
-  }
-
-  // Big tanks
-  for (let i = 0; i < 4; i++) {
-    const a = (i / 4) * Math.PI * 2 + 0.8;
-    const r = WALL * 0.35;
-    const x = Math.sin(a) * r, z = Math.cos(a) * r;
-    const tank = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 10, 16), M(0xc8c8d0, { metalness: 0.4, roughness: 0.5 }));
-    tank.position.set(x, 5, z);
-    worldGroup.add(tank);
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.2, 0.4, 16), M(0x606870, { metalness: 0.5 }));
-    cap.position.set(x, 10, z);
-    worldGroup.add(cap);
-    OBST.push({ x, z, r: 3 });
-  }
-
-  // Fence
-  {
-    const c = document.createElement('canvas'); c.width = c.height = 64;
-    const g = c.getContext('2d'); g.strokeStyle = '#c8c8c8'; g.lineWidth = 3;
-    g.beginPath(); g.moveTo(0, 0); g.lineTo(64, 64); g.moveTo(64, 0); g.lineTo(0, 64); g.stroke();
-    const tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(180, 3);
-    const fence = new THREE.Mesh(new THREE.CylinderGeometry(WALL + 6, WALL + 6, 7, 80, 1, true), new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide }));
-    fence.position.y = 3.5; worldGroup.add(fence);
-  }
-
-  trackSamples = [];
-}
-
-function buildParkWorld(map) {
-  WALL = map.wall;
-  ISL = 0;
-  ROAD_HALF = map.roadHalf;
-
-  // Grass base
-  const ground = new THREE.Mesh(new THREE.CircleGeometry(WALL + 30, 48).rotateX(-Math.PI / 2), M(0x5a8a4a, { roughness: 1.0 }));
-  ground.position.y = -0.02;
-  worldGroup.add(ground);
-
-  // Winding paths — a few loops of dirt path
-  const pathMat = M(0x9a8a6a, { roughness: 0.95 });
-  const pathPts = [];
-  for (let i = 0; i < 8; i++) {
-    const a = i / 8 * Math.PI * 2;
-    const r = WALL * 0.55 + Math.sin(i * 1.3) * 12;
-    pathPts.push([Math.sin(a) * r, Math.cos(a) * r]);
-  }
-  // Build path ribbon using the same road-edge technique
-  {
-    const edges = roadEdges(pathPts, 3.2);
-    const N = edges.length;
-    const positions = [], indices = [], uvs = [];
-    for (let i = 0; i < N; i++) {
-      const e = edges[i];
-      positions.push(e.x + e.dx, 0.03, e.z + e.dz);
-      positions.push(e.x - e.dx, 0.03, e.z - e.dz);
-      uvs.push(0, i / N * 4); uvs.push(1, i / N * 4);
-    }
-    for (let i = 0; i < N; i++) {
-      const j = (i + 1) % N;
-      const a = i * 2, b = i * 2 + 1, c = j * 2, d = j * 2 + 1;
-      indices.push(a, c, b, b, c, d);
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-    geo.setIndex(indices);
-    geo.computeVertexNormals();
-    worldGroup.add(new THREE.Mesh(geo, pathMat));
-  }
-
-  // Central pond
-  {
-    const pond = new THREE.Mesh(new THREE.CircleGeometry(18, 32).rotateX(-Math.PI / 2), M(0x2a5a8a, { roughness: 0.2, metalness: 0.4 }));
-    pond.position.set(0, 0.04, 0);
-    worldGroup.add(pond);
-    // Pond edge rocks
-    for (let i = 0; i < 24; i++) {
-      const a = i / 24 * Math.PI * 2;
-      const r = 18 + Math.random() * 0.5;
-      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.9 + Math.random() * 0.4, 0), M(0x6a6a5a));
-      rock.position.set(Math.sin(a) * r, 0.3, Math.cos(a) * r);
-      rock.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
-      worldGroup.add(rock);
-    }
-    OBST.push({ x: 0, z: 0, r: 18 });
-  }
-
-  // Trees scattered
-  {
-    const N = 120;
-    const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.4, 0.55, 3.5, 5), M(0x5b4636), N);
-    const crown = new THREE.InstancedMesh(new THREE.SphereGeometry(2.6, 6, 5), M(0x3d7a3a), N);
-    const d = new THREE.Object3D();
-    let placed = 0;
-    for (let tries = 0; tries < N * 3 && placed < N; tries++) {
-      const a = Math.random() * Math.PI * 2, r = 22 + Math.random() * (WALL - 30);
-      const x = Math.sin(a) * r, z = Math.cos(a) * r;
-      // keep away from pond
-      if (Math.hypot(x, z) < 20) continue;
-      const s = 0.85 + Math.random() * 0.8;
-      d.position.set(x, 1.7 * s, z); d.scale.setScalar(s); d.updateMatrix();
-      trunk.setMatrixAt(placed, d.matrix);
-      d.position.y = 4.4 * s; d.updateMatrix();
-      crown.setMatrixAt(placed, d.matrix);
-      placed++;
-      OBST.push({ x, z, r: 0.5 });
-    }
-    trunk.count = placed; crown.count = placed;
-    trunk.instanceMatrix.needsUpdate = true; crown.instanceMatrix.needsUpdate = true;
-    worldGroup.add(trunk, crown);
-  }
-
-  // Benches along path
-  {
-    const benchMat = M(0x7a5a3a);
-    for (let i = 0; i < 12; i++) {
-      const a = i / 12 * Math.PI * 2 + 0.2;
-      const r = WALL * 0.55;
-      const x = Math.sin(a) * r, z = Math.cos(a) * r;
-      const b = new THREE.Group();
-      const seat = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.15, 0.6), benchMat);
-      seat.position.y = 0.5; b.add(seat);
-      const back = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.5, 0.1), benchMat);
-      back.position.set(0, 0.85, -0.25); b.add(back);
-      for (const sx of [-0.9, 0.9]) {
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.5, 0.5), benchMat);
-        leg.position.set(sx, 0.25, 0); b.add(leg);
-      }
-      b.position.set(x, 0, z);
-      b.rotation.y = -a;
-      worldGroup.add(b);
-    }
-  }
-
-  // Flower beds
-  const flowerCols = [0xff6a9a, 0xffd23f, 0xff7b00, 0xb388ff];
-  for (let i = 0; i < 30; i++) {
-    const a = Math.random() * Math.PI * 2, r = 25 + Math.random() * (WALL - 40);
-    const x = Math.sin(a) * r, z = Math.cos(a) * r;
-    if (Math.hypot(x, z) < 22) continue;
-    const flower = new THREE.Mesh(new THREE.SphereGeometry(0.25, 5, 4), M(flowerCols[Math.floor(Math.random() * flowerCols.length)], { emissive: 0x220000, emissiveIntensity: 0.1 }));
-    flower.position.set(x, 0.25, z);
-    worldGroup.add(flower);
-  }
-
-  // Fence
-  {
-    const c = document.createElement('canvas'); c.width = c.height = 64;
-    const g = c.getContext('2d'); g.strokeStyle = '#c8c8c8'; g.lineWidth = 3;
-    g.beginPath(); g.moveTo(0, 0); g.lineTo(64, 64); g.moveTo(64, 0); g.lineTo(0, 64); g.stroke();
-    const tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(180, 3);
-    const fence = new THREE.Mesh(new THREE.CylinderGeometry(WALL + 6, WALL + 6, 7, 80, 1, true), new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide }));
-    fence.position.y = 3.5; worldGroup.add(fence);
-  }
-
-  trackSamples = [];
-}
-
 /* ================= WORLD DISPATCH ================= */
 function buildWorld(map) {
   clearWorld();
@@ -966,23 +583,19 @@ function buildWorld(map) {
   }
 
   if (map.category === 'track') buildTrackWorld(map);
-  else if (map.kind === 'city') buildCityWorld(map);
-  else if (map.kind === 'cargo') buildCargoWorld(map);
-  else if (map.kind === 'park') buildParkWorld(map);
+  else {
+    const build = { city: buildCity, cargo: buildCargo, park: buildPark }[map.kind];
+    const info = build(map, { group: worldGroup, obst: OBST, updaters: WORLD_UPDATERS });
+    WALL = info.wall; ISL = info.isl; ROAD_HALF = info.roadHalf; FREE_SPAWN = info.spawn;
+    trackSamples = [];
+  }
 
-  // Weather
   if (map.weather === 'rain') weather = createRain(scene);
   else if (map.weather === 'snow') weather = createSnow(scene);
-
-  // NPCs in freeroam
-  if (map.category === 'freeroam') {
-    const count = map.kind === 'city' ? 30 : map.kind === 'cargo' ? 12 : 20;
-    npcField = createNPCField(worldGroup, map.kind, count, WALL);
-  }
 }
 
-/* ================= RACE GATES (fixed position & rotation) ================= */
-const raceState = { active: false, cp: 0, time: 0, gates: [], done: false, countdown: 0, countdownActive: false, sloMo: 0, finalTime: 0, showFinal: 0 };
+/* ================= RACE GATES ================= */
+const raceState = { active: false, cp: 0, time: 0, gates: [], done: false, countdown: 0, countdownActive: false, sloMo: 0, finalTime: 0 };
 function buildRaceGates(map) {
   if (raceGateGroup) { worldGroup.remove(raceGateGroup); raceGateGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
   raceGateGroup = new THREE.Group();
@@ -990,10 +603,10 @@ function buildRaceGates(map) {
   raceState.gates = [];
   const pts = map.track;
   const N = pts.length;
+  if (!N) return;
   const edges = roadEdges(pts, ROAD_HALF + 1);
   for (let i = 0; i < N; i++) {
     const e = edges[i];
-    // Use averaged tangent so gates face along the road, matching the road curve.
     const ang = Math.atan2(e.ax, e.az);
     const gate = new THREE.Group();
     gate.position.set(e.x, 0, e.z);
@@ -1160,7 +773,7 @@ function repaint(m, hex) {
   m.paint.needsUpdate = true;
 }
 
-/* ================= CAR MODEL (updated with better proportions & details) ================= */
+/* ================= CAR MODEL ================= */
 function buildAlloyWheel(L) {
   const grp = new THREE.Group();
   const roll = new THREE.Group();
@@ -1388,7 +1001,6 @@ function buildModel(def, paintHex) {
     box(0.024, 0.006, ws.chord * 0.7, suitAccent, sx * (ws.hw + 0.02), 0.045, 0, plane);
   }
   box(ws.hw * 2, 0.02, 0.032, suitAccent, 0, 0.026, -ws.chord * 0.44, plane);
-  // interior
   const intW = Math.min(cm.wb, cm.wr) * 0.94;
   box(intW * 2, 0.012, zf - zr - 0.06, interiorMat, 0, floorY + 0.006, zMid);
   box(intW * 1.9, 0.15, 0.22, interiorMat, 0, floorY + 0.10, zf - 0.10);
@@ -1491,10 +1103,11 @@ function setModel(def, hex, t) {
   model = buildModel(def, hex);
   carGroup.add(model.root);
   applyModel(t);
+  if (renderer.shadowMap.enabled) model.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
 }
 
 /* ================= SAVE / STATE ================= */
-const SAVE_KEY = 'driftrun-save-v7';
+const SAVE_KEY = 'driftrun-save-v8';
 const save = { cash: 3000, owned: ['hachi'], car: 'hachi', tier: 0, paint: {}, tune: {}, map: 'sunset', goals: {} };
 try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE_KEY) || '{}')); } catch {}
 if (!Array.isArray(save.owned)) save.owned = ['hachi'];
@@ -1502,7 +1115,7 @@ if (!save.owned.includes('hachi')) save.owned.push('hachi');
 if (!CAR_DEFS[save.car] || !save.owned.includes(save.car)) save.car = 'hachi';
 if (!TIERS[save.tier]) save.tier = 0;
 if (!MAPS.find(m => m.id === save.map)) save.map = 'sunset';
-save.set = { ctrl: 'tilt', sens: 1, flip: false, vib: true, mute: false, shadows: false, ...(save.set || {}) };
+save.set = { ctrl: 'tilt', sens: 1, flip: false, vib: true, mute: false, shadows: true, ...(save.set || {}) };
 save.goals = save.goals || {};
 save.tips = save.tips || 0;
 const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch {} };
@@ -1552,11 +1165,11 @@ function reset() {
     const h0 = Math.atan2(x1 - x0, z1 - z0);
     Object.assign(S, { x: x0, z: z0, h: h0, vx: 0, vz: 0, steer: 0, loose: 0, weightTransfer: 0 });
   } else {
-    Object.assign(S, { x: 0, z: -WALL * 0.5, h: 0, vx: 0, vz: 0, steer: 0, loose: 0, weightTransfer: 0 });
+    Object.assign(S, { x: FREE_SPAWN.x, z: FREE_SPAWN.z, h: FREE_SPAWN.h, vx: 0, vz: 0, steer: 0, loose: 0, weightTransfer: 0 });
   }
   camH = S.h; pending = 0; driftT = 0; gap = 0; boost = 1; ghostT = 0; ghostRecT = 0;
   if (mode === 'timed') { timeLeft = 90; runScore = 0; ghostRec = []; }
-  if (mode === 'race') { raceState.cp = 0; raceState.time = 0; raceState.active = false; raceState.done = false; raceState.countdownActive = false; raceState.countdown = 0; raceState.sloMo = 0; raceState.showFinal = 0; updateGateColors(); }
+  if (mode === 'race') { raceState.cp = 0; raceState.time = 0; raceState.active = false; raceState.done = false; raceState.countdownActive = false; raceState.countdown = 0; raceState.sloMo = 0; raceState.finalTime = 0; updateGateColors(); }
 }
 function syncHud() {
   const hh = $('hud'); if (hh) hh.style.display = (photo || menu) ? 'none' : '';
@@ -1593,7 +1206,7 @@ function suspension(dt) {
   SUS.pitch = clamp(SUS.pitch, -0.25, 0.25); SUS.roll = clamp(SUS.roll, -0.3, 0.3); SUS.heave = clamp(SUS.heave, -0.15, 0.15);
 }
 
-/* ================= MENU (skip detailed re-render; reuse) ================= */
+/* ================= MENU ================= */
 const menuEl = $('menu'), mLeft = $('mLeft'), mRight = $('mRight'), mFoot = $('mFoot');
 const h = (tag, props = {}, ...kids) => {
   const el = document.createElement(tag);
@@ -1616,39 +1229,93 @@ const clearFoot = () => mFoot.replaceChildren();
 const mStatus = (text) => h('div', { class: 'm-status', role: 'status' }, text);
 function keepScroll(fn) { const old = mLeft.querySelector('.mscroll'); const st = old ? old.scrollTop : mLeft.scrollTop; fn(); mLeft.scrollTop = st; }
 
-function trackPreviewSvg(map, size = 96) {
-  if (!map.track || !map.track.length) {
-    // freeroam preview: icon
-    const icons = { city: 'CITY', cargo: 'CARGO', park: 'PARK' };
-    const col = map.night ? '#4ec8ff' : '#ffd23f';
-    return '<svg viewBox="0 0 ' + size + ' ' + size + '" width="100%" height="100%"><rect x="14" y="14" width="68" height="68" fill="none" stroke="' + col + '" stroke-width="3"/><text x="50" y="55" text-anchor="middle" fill="' + col + '" font-size="12" font-family="sans-serif">' + (icons[map.kind] || 'OPEN') + '</text></svg>';
+/* --- Map icons --- */
+// Track maps: draw the actual loop with a green dot on the start line.
+function trackIconSvg(map, size = 96) {
+  if (map.category === 'track' && map.track && map.track.length) {
+    const pts = map.track;
+    const pad = 12;
+    const maxR = Math.max(1, ...pts.map(p => Math.hypot(p[0], p[1])));
+    const scale = (size - pad * 2) / (maxR * 2);
+    const cx = size / 2, cy = size / 2;
+    let d = '';
+    for (let i = 0; i < pts.length; i++) {
+      const x = cx + pts[i][0] * scale;
+      const y = cy + pts[i][1] * scale;
+      d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1) + ' ';
+    }
+    d += 'Z';
+    const stroke = map.night ? '#4ec8ff' : '#ffd23f';
+    const startX = cx + pts[0][0] * scale;
+    const startY = cy + pts[0][1] * scale;
+    return '<svg viewBox="0 0 ' + size + ' ' + size + '" width="100%" height="100%">' +
+      '<rect width="' + size + '" height="' + size + '" fill="' + (map.night ? 'rgba(20,10,40,0.6)' : 'rgba(30,30,40,0.35)') + '"/>' +
+      '<path d="' + d + '" fill="none" stroke="#0b0820" stroke-width="8" stroke-linejoin="round" opacity="0.6"/>' +
+      '<path d="' + d + '" fill="none" stroke="' + stroke + '" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>' +
+      '<path d="' + d + '" fill="none" stroke="#ffffff" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>' +
+      '<circle cx="' + startX.toFixed(1) + '" cy="' + startY.toFixed(1) + '" r="4.2" fill="#3ddc5a" stroke="#0b0820" stroke-width="1.5"/>' +
+      '</svg>';
   }
-  const pts = map.track;
-  const pad = 10;
-  const maxR = Math.max(1, ...pts.map(p => Math.hypot(p[0], p[1])));
-  const scale = (size - pad * 2) / (maxR * 2);
-  const cx = size / 2, cy = size / 2;
-  let d = '';
-  for (let i = 0; i < pts.length; i++) {
-    const x = cx + pts[i][0] * scale;
-    const y = cy + pts[i][1] * scale;
-    d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1) + ' ';
+  // Freeroam: distinct shapes for each kind.
+  if (map.kind === 'city') {
+    // 3x3 grid of little blocks
+    let rects = '';
+    for (let gx = 0; gx < 3; gx++) {
+      for (let gz = 0; gz < 3; gz++) {
+        const w = 18 + (gx + gz) * 2, hh = 14 + (gx * gz) * 3;
+        rects += '<rect x="' + (14 + gx * 26) + '" y="' + (14 + gz * 26) + '" width="' + w + '" height="' + hh + '" fill="#6a7280" stroke="#0b0820" stroke-width="1.4"/>';
+      }
+    }
+    return '<svg viewBox="0 0 96 96" width="100%" height="100%">' +
+      '<rect width="96" height="96" fill="rgba(30,30,40,0.35)"/>' +
+      '<rect x="0" y="0" width="96" height="96" fill="#2a2e38"/>' +
+      '<rect x="6" y="6" width="84" height="84" fill="#40444c"/>' +
+      rects +
+      '<line x1="6" y1="48" x2="90" y2="48" stroke="#f4f4f4" stroke-width="1.4" stroke-dasharray="4 4"/>' +
+      '<line x1="48" y1="6" x2="48" y2="90" stroke="#f4f4f4" stroke-width="1.4" stroke-dasharray="4 4"/>' +
+      '</svg>';
   }
-  d += 'Z';
-  const stroke = map.night ? '#4ec8ff' : '#ffd23f';
-  return '<svg viewBox="0 0 ' + size + ' ' + size + '" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">' +
-    '<path d="' + d + '" fill="none" stroke="' + stroke + '" stroke-width="6" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>' +
-    '<path d="' + d + '" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>' +
-    '</svg>';
+  if (map.kind === 'cargo') {
+    // containers + crane
+    let rects = '';
+    for (let i = 0; i < 6; i++) {
+      const x = 8 + (i % 3) * 28, y = 12 + Math.floor(i / 3) * 32;
+      const col = ['#c23a2a', '#2e6ab8', '#e0a830', '#2eaa5a', '#a8a8a8', '#d04060'][i];
+      rects += '<rect x="' + x + '" y="' + y + '" width="22" height="12" fill="' + col + '" stroke="#0b0820" stroke-width="1.2"/>';
+      rects += '<rect x="' + x + '" y="' + (y + 14) + '" width="22" height="12" fill="' + col + '" stroke="#0b0820" stroke-width="1.2"/>';
+    }
+    return '<svg viewBox="0 0 96 96" width="100%" height="100%">' +
+      '<rect width="96" height="96" fill="#3a3e46"/>' +
+      '<g transform="translate(64, 6)"><rect x="0" y="0" width="2" height="30" fill="#c8a020"/><rect x="-6" y="0" width="22" height="2" fill="#c8a020"/></g>' +
+      rects +
+      '</svg>';
+  }
+  if (map.kind === 'park') {
+    // trees + pond
+    let trees = '';
+    const random = (s => () => (s = Math.sin(s) * 10000, s - Math.floor(s)))(Math.PI);
+    for (let i = 0; i < 16; i++) {
+      const a = i / 16 * Math.PI * 2 + 0.3;
+      const r = 26 + random() * 12;
+      const x = 48 + Math.sin(a) * r, y = 48 + Math.cos(a) * r;
+      trees += '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="4.5" fill="#3d7a3a" stroke="#0b0820" stroke-width="1.2"/>';
+    }
+    return '<svg viewBox="0 0 96 96" width="100%" height="100%">' +
+      '<rect width="96" height="96" fill="#5a8a4a"/>' +
+      '<ellipse cx="48" cy="48" rx="18" ry="14" fill="#2a5a8a" stroke="#0b0820" stroke-width="1.4"/>' +
+      '<path d="M6,48 Q 20,32 42,44 T 90,48" fill="none" stroke="#9a8a6a" stroke-width="4" opacity="0.9"/>' +
+      trees +
+      '</svg>';
+  }
+  return '<svg viewBox="0 0 96 96" width="100%" height="100%"><rect width="96" height="96" fill="#303038"/></svg>';
 }
 
-/* ================= AUDIO (upgraded) ================= */
+/* ================= AUDIO ================= */
 let audio = null;
 function initAudio() {
   if (audio) { if (audio.ctx && audio.ctx.resume) audio.ctx.resume(); return; }
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
   const ctx = new AC(), master = ctx.createGain(); master.connect(ctx.destination);
-  // Engine: two detuned saws + lowpass + slight drive
   const eng1 = ctx.createOscillator(); eng1.type = 'sawtooth';
   const eng2 = ctx.createOscillator(); eng2.type = 'square'; eng2.detune.value = 8;
   const engSum = ctx.createGain(); engSum.gain.value = 0.5;
@@ -1663,19 +1330,16 @@ function initAudio() {
   const engG = ctx.createGain(); engG.gain.value = 0;
   engSum.connect(lp).connect(drive).connect(engG).connect(master);
   eng1.start(); eng2.start();
-  // Exhaust rumble: filtered noise
   const nb = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate), data = nb.getChannelData(0);
   for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
   const ns = ctx.createBufferSource(); ns.buffer = nb; ns.loop = true;
   const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 3.2; bp.frequency.value = 1800;
   const sg = ctx.createGain(); sg.gain.value = 0;
   ns.connect(bp).connect(sg).connect(master); ns.start();
-  // Wind: low-freq noise for high speed
   const ns2 = ctx.createBufferSource(); ns2.buffer = nb; ns2.loop = true;
   const lp2 = ctx.createBiquadFilter(); lp2.type = 'lowpass'; lp2.frequency.value = 700;
   const windG = ctx.createGain(); windG.gain.value = 0;
   ns2.connect(lp2).connect(windG).connect(master); ns2.start();
-  // Pad
   const pad = ctx.createGain(); pad.gain.value = 0; pad.connect(master);
   const pads = [110, 138.6, 164.8, 220].map(f => { const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = f; o.connect(pad); o.start(); return o; });
   audio = { ctx, master, eng1, eng2, engG, lp, drive, bp, sg, windG, pad, pads };
@@ -1691,7 +1355,6 @@ function sfx(kind) {
 }
 addEventListener('click', e => { const b = e.target.closest && e.target.closest('button'); if (b) sfx(b.classList.contains('cls') ? 'pop' : 'click'); });
 
-/* ================= MENU RENDER ================= */
 function updateMenuTopBar() {
   const c = $('mCash'), b = $('mBest');
   if (c) c.textContent = '$' + save.cash.toLocaleString();
@@ -1773,13 +1436,13 @@ const segRow = (label, hint, opts, get, set) => {
   opts.forEach((o, i) => wrap.append(h('button', { class: 'segb' + (get() === i ? ' sel' : ''), type: 'button', onclick: () => { set(i); wrap.querySelectorAll('.segb').forEach((x, j) => x.classList.toggle('sel', j === i)); } }, o)));
   return h('div', { class: 'ctl' }, h('div', { class: 'clab' }, h('span', {}, label)), wrap, hint ? h('div', { class: 'hint' }, hint) : null);
 };
-function setWet(v) { wet = v; scene.fog.color.setHex(wet ? 0x8a93a8 : HORIZON); sun.intensity = wet ? 1.1 : currentMap.sun; }
 function setMute(v) { save.set.mute = v; persist(); if (audio) audio.master.gain.value = v ? 0 : 1; }
 function setPhoto(v) { photo = v; syncHud(); if (v && touchUI) showTip('Tap left or right to bounce the suspension'); }
 function setShadows(v) {
   save.set.shadows = v; persist();
   renderer.shadowMap.enabled = v;
   sun.castShadow = v;
+  carGroup.traverse(o => { if (o.isMesh) { o.castShadow = v; } });
   scene.traverse(o => { if (o.material) { const mm = Array.isArray(o.material) ? o.material : [o.material]; mm.forEach(x => x.needsUpdate = true); } });
 }
 function resetSaveData() {
@@ -1808,7 +1471,16 @@ function renderSettings() {
           status))
     ));
   } else {
-    secs.push(mSec('Keyboard', h('div', { class: 'ctl' }, h('div', { class: 'hint', style: 'line-height:2' }, 'W / S  gas and brake   -   A / D  steer', h('br'), 'Space  handbrake   -   Shift  boost', h('br'), '1 / 2 / 3  speed class   -   Esc  menu'))));
+    secs.push(mSec('Keyboard', h('div', { class: 'keys-block' },
+      h('div', { class: 'keyrow' }, h('kbd', {}, 'W'), h('kbd', {}, 'A'), h('kbd', {}, 'S'), h('kbd', {}, 'D'), h('span', {}, 'Drive')),
+      h('div', { class: 'keyrow' }, h('kbd', {}, 'Space'), h('span', {}, 'Handbrake')),
+      h('div', { class: 'keyrow' }, h('kbd', {}, 'Shift'), h('span', {}, 'Boost')),
+      h('div', { class: 'keyrow' }, h('kbd', {}, '1'), h('kbd', {}, '2'), h('kbd', {}, '3'), h('span', {}, 'Speed class')),
+      h('div', { class: 'keyrow' }, h('kbd', {}, 'R'), h('span', {}, 'Reset car')),
+      h('div', { class: 'keyrow' }, h('kbd', {}, 'C'), h('span', {}, 'Camera')),
+      h('div', { class: 'keyrow' }, h('kbd', {}, 'P'), h('span', {}, 'Photo mode')),
+      h('div', { class: 'keyrow' }, h('kbd', {}, 'Esc'), h('span', {}, 'Menu')),
+    )));
   }
   const game = [
     segRow('Camera', null, ['Chase', 'Hood', 'Far'], () => camMode, i => { camMode = i; }),
@@ -1825,14 +1497,12 @@ function renderSettings() {
   footSet(mStatus(touchUI ? 'Touch input detected' : 'Keyboard and mouse'), sbtn('Back', () => openMenu('home')));
 }
 function renderMaps() {
-  // Split into Track and Freeroam categories
   const trackMaps = MAPS.filter(m => m.category === 'track');
   const freeMaps = MAPS.filter(m => m.category === 'freeroam');
   const buildCard = (mapDef) => {
     const sel = mapDef.id === save.map;
-    const idx = MAPS.indexOf(mapDef);
     return h('button', { class: 'map-card' + (sel ? ' sel' : ''), type: 'button', onclick: () => { setMap(mapDef.id); renderMaps(); } },
-      h('span', { class: 'm-thumb t' + ((idx % 5) + 1) }, h('span', { class: 'm-thumb-svg', html: trackPreviewSvg(mapDef) })),
+      h('span', { class: 'm-thumb' }, h('span', { class: 'm-thumb-svg', html: trackIconSvg(mapDef) })),
       h('span', { class: 'm-info' }, h('b', {}, mapDef.name), h('span', {}, mapDef.desc)),
       h('span', { class: 'm-go' }, sel ? 'SELECTED' : 'SELECT'));
   };
@@ -1926,7 +1596,6 @@ function control(it) {
   return h('div', { class: 'ctl' }, h('div', { class: 'clab' }, h('span', {}, it.label), val), inp, h('div', { class: 'hint' }, it.hint));
 }
 
-/* -------- Auto tune based on goals -------- */
 const AUTO_GOALS = [
   { key: 'drift', label: 'Drifting', hint: 'Locked diff, high rear pressure, drift tyres.' },
   { key: 'grip', label: 'Grip', hint: 'Stiff springs, semi slicks, low ride height.' },
@@ -1937,7 +1606,6 @@ const AUTO_GOALS = [
 function autoTuneFromGoals() {
   const g = save.goals || {};
   const t = { ...defaultTune(carDef) };
-  // Drift preset dominates
   if (g.drift) {
     t.rideH = -20; t.springF = 8; t.springR = 7; t.arbF = 3; t.arbR = 8;
     t.camberF = -4.5; t.camberR = -0.5; t.toeF = -0.4; t.toeR = -0.1; t.caster = 7.5;
@@ -1968,7 +1636,6 @@ function renderEdit() {
     const b = h('button', { class: 'sw' + (paintOf(carDef.id) === c ? ' sel' : ''), type: 'button', 'aria-label': 'Paint ' + hex6(c), style: 'background:' + hex6(c), onclick: () => { save.paint[carDef.id] = c; repaint(model, c); persist(); swatches.querySelectorAll('.sw').forEach(x => x.classList.toggle('sel', x === b)); } });
     swatches.append(b);
   });
-  // Auto-tune goal checkboxes
   const goalRows = AUTO_GOALS.map(goal => {
     const on = !!save.goals[goal.key];
     const b = h('button', { class: 'tog' + (on ? ' on' : ''), type: 'button', role: 'switch', 'aria-checked': String(on), onclick: () => {
@@ -2300,14 +1967,12 @@ let smokeAcc = 0;
 const ghost = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.0, 4.3), new THREE.MeshBasicMaterial({ color: 0x66ffee, transparent: true, opacity: 0.25, depthWrite: false }));
 ghost.visible = false; scene.add(ghost);
 
-/* ================= PHYSICS (heavily drift focused) ================= */
-// Constants tuned for an arcade slide feel.
-const GRIP_BASE = 0.42;   // base lateral grip multiplier (lower = more slide)
-const DRIFT_BASE = 1.75;  // sustained drift grip (higher = easier to hold slide)
-const SLIDE_ENTRY = 0.10; // |slip| angle to start sliding
-const SLIDE_SPEED = 5.5;  // min speed to slide
-const THROTTLE_LOOSE = 0.5; // how much throttle loosens the rear
-const HB_LOOSE = 0.85;
+/* ================= PHYSICS ================= */
+const GRIP_BASE = 0.42;
+const DRIFT_BASE = 1.75;
+const SLIDE_ENTRY = 0.10;
+const SLIDE_SPEED = 5.5;
+const THROTTLE_LOOSE = 0.5;
 const COUNTER_ASSIST = 0.6;
 
 function step(dt) {
@@ -2322,29 +1987,24 @@ function step(dt) {
   const sp = Math.hypot(vf, vl), slip = Math.atan2(vl, Math.abs(vf) + 0.001);
   const inp = inSteer() * (brk && vf > 5 ? 1 - s.brakeUnder : 1);
 
-  // Weight transfer state: gas -> weight back (rear squat), brake -> weight forward.
   const targetWT = (thr ? -1 : 0) + (brk ? 1 : 0);
   S.weightTransfer += (targetWT - S.weightTransfer) * Math.min(1, dt * 4);
-  const rearGripMod = 1 + 0.15 * S.weightTransfer;   // rear lightens with throttle
+  const rearGripMod = 1 + 0.15 * S.weightTransfer;
   const frontGripMod = 1 - 0.10 * S.weightTransfer;
 
-  // Steering (with a strong counter-steer assist)
   const assist = -COUNTER_ASSIST * clamp(vl / 8, -1, 1) * S.loose;
   S.steer += (clamp(inp + assist, -1, 1) - S.steer) * Math.min(1, dt * (inp ? 12 : 16));
 
-  // Boost
   const bst = thr && inBoost() && boost > 0.02 ? 1 : 0;
   if (bst) boost = Math.max(0, boost - dt * 0.3);
   else if (sp > 7 && Math.abs(slip) > 0.25) boost = Math.min(1, boost + dt * 0.2);
 
-  // Longitudinal
   if (thr) vf += s.power * (bst ? 1.9 : 1) * (1 - clamp(vf / (s.top * (bst ? 1.25 : 1)), 0, 1.2)) * dt * (vf < 0 ? 2 : 1);
   if (brk) vf = vf > 0.5 ? vf - 34 * dt : Math.max(-12, vf - 14 * dt);
   vf *= Math.exp(-((thr ? 0.08 : 0.22) + s.dragK + (onRoad ? 0 : 0.3)) * dt);
   if (!thr && !brk && Math.abs(vf) < 3) vf *= Math.exp(-2.2 * dt);
-  if (hb) vf *= Math.exp(-0.35 * dt); // handbrake slows a bit but not much
+  if (hb) vf *= Math.exp(-0.35 * dt);
 
-  // Initiate slide easily. Any of: handbrake, throttle stab at speed with steering, big slip.
   const speedOK = vf > SLIDE_SPEED;
   const steerIn = Math.abs(S.steer);
   const wantHB = hb ? 1 : 0;
@@ -2355,48 +2015,30 @@ function step(dt) {
   want = Math.min(1, want);
   S.loose += (want - S.loose) * Math.min(1, dt * (want > S.loose ? 16 : 3.2));
 
-  // Grip changes with loose, weight transfer, surface, wetness
   const gripFront = s.grip * GRIP_BASE * mapMul * surfMul * frontGripMod;
   const gripRear = s.grip * GRIP_BASE * mapMul * surfMul * rearGripMod;
   const slideGrip = s.drift * DRIFT_BASE * mapMul * surfMul;
   const gripNow = lerp((gripFront + gripRear) * 0.5, slideGrip * (hb ? 0.55 : 1) * (1 - 0.3 * Math.abs(S.weightTransfer)), S.loose);
   const aeroFactor = 1 + s.aeroK * sp * sp;
   const wetFactor = wet ? s.wetMul : 1;
-  // Rear slides further under throttle
   const throttleSlide = thr ? (1 - THROTTLE_LOOSE * clamp(vf / s.top, 0, 1)) : 1;
   vl *= Math.exp(-gripNow * aeroFactor * wetFactor * throttleSlide * dt);
 
-  // Yaw: much more responsive when loose, stronger counter from throttle-off
   const dir = vf >= -1 ? 1 : -1;
   const speedSteer = Math.min(1, sp / 5) / (1 + sp / (s.top * 1.6));
   const yawGain = (1 + 0.8 * S.loose) * (hb ? 1.5 : 1) * (thr ? 1.05 : 1);
   const yaw = S.steer * s.steer * speedSteer * dir * yawGain;
 
-  // Recompose
   S.vx = fx * vf + rx * vl; S.vz = fz * vf + rz * vl;
   S.h += yaw * dt; S.x += S.vx * dt; S.z += S.vz * dt;
   Object.assign(S, { sp, slip, thr, vf, hb, yaw, bst, onRoad });
   collide();
-
-  // Update NPCs only in freeroam
-  if (npcField.length) {
-    updateNPCs(npcField, dt, S.x, S.z, S.vx, S.vz, WALL, (nx, nz) => {
-      // small jolt when hitting an NPC
-      S.vx *= 0.85; S.vz *= 0.85;
-      shake = Math.max(shake, 0.4);
-      SUS.hv -= 0.08;
-    });
-  }
 }
 function collide() {
   const d = Math.hypot(S.x, S.z) || 1;
   if (d > WALL - CR) hit(-S.x / d, -S.z / d, d - (WALL - CR));
   if (ISL > 0 && d < ISL + CR) hit(S.x / d, S.z / d, ISL + CR - d);
-  for (let i = 0; i < OBST.length; i++) {
-    const o = OBST[i];
-    const dx = S.x - o.x, dz = S.z - o.z, dd = Math.hypot(dx, dz) || 1;
-    if (dd < o.r + CR) hit(dx / dd, dz / dd, o.r + CR - dd);
-  }
+  resolveBody(S, OBST, hit);
 }
 function hit(nx, nz, pen) {
   S.x += nx * pen; S.z += nz * pen;
@@ -2475,8 +2117,11 @@ function scoring(dt) {
   }
   if (S.sp > 12) {
     for (const o of OBST) {
-      const g = Math.hypot(S.x - o.x, S.z - o.z) - o.r - CR;
-      if (g > 0 && g < 1.2 && nearCd <= 0) { nearCd = 1.2; award(150, 'CLOSE CALL'); }
+      if (o.nm) continue;
+      const dx = S.x - o.x, dz = S.z - o.z, lim = (o.br ?? o.r) + 6;
+      if (dx * dx + dz * dz > lim * lim) continue;
+      const g = surfaceDist(o, S.x, S.z) - 1.0;
+      if (g > 0 && g < 1.4 && nearCd <= 0) { nearCd = 1.2; award(150, 'CLOSE CALL'); }
     }
     const wg = WALL - CR - Math.hypot(S.x, S.z);
     if (wg > 0 && wg < 1.5 && drifting) {
@@ -2529,7 +2174,7 @@ function hud() {
       const hz = ZONES.length ? ZONES[zoneI % ZONES.length] : null;
       const obj = $('obj');
       if (obj) obj.textContent = (mode === 'timed' ? Math.max(0, Math.ceil(timeLeft)) + 's - ' + runScore + ' pts - ' : '') +
-        (hz ? 'Gold zone ' + arrow(hz.x, hz.z) + ' ' + Math.round(Math.hypot(hz.x - S.x, hz.z - S.z)) + 'm - Bank pad ' + arrow(PAD.x, PAD.z) + ' ' + Math.round(Math.hypot(PAD.x - S.x, PAD.z - S.z)) + 'm' : (currentMap.category === 'freeroam' ? 'Freeroam - drift anywhere. ' + (ON_ROAD ? '' : 'Off-road grip reduced.') : ''));
+        (hz ? 'Gold zone ' + arrow(hz.x, hz.z) + ' ' + Math.round(Math.hypot(hz.x - S.x, hz.z - S.z)) + 'm - Bank pad ' + arrow(PAD.x, PAD.z) + ' ' + Math.round(Math.hypot(PAD.x - S.x, PAD.z - S.z)) + 'm' : (currentMap.category === 'freeroam' ? 'Freeroam - drift anywhere.' : ''));
       const score = $('score'); if (score) score.textContent = Math.floor(pending);
       const mult = $('mult'); if (mult) mult.textContent = pending > 0 ? 'x' + mult.toFixed(1) + (gap > 0 ? '  bank in ' + Math.max(0, 4 - gap).toFixed(1) + 's' : '') : '';
     }
@@ -2791,7 +2436,6 @@ function visuals(dt) {
       w.pivot.rotation.y = (w.front ? steerA : 0) - w.sx * m.toe[w.axle];
       if (!inMenu && !photo) w.roll.rotation.x += (S.vf / w.R) * dt;
     }
-    if (m.swSpin) m.swSpin.rotation.z = inMenu ? 0 : -S.steer * 2.3;
     const skidding = !inMenu && !photo && ((Math.abs(S.slip) > 0.18 && S.sp > 5) || (S.hb && S.sp > 4));
     const lx = Math.cos(S.h), lz = -Math.sin(S.h), fx = Math.sin(S.h), fz = Math.cos(S.h);
     const rz = m.lay.rear.z, rw = m.rearX;
@@ -2814,6 +2458,7 @@ function visuals(dt) {
     }
     updateSmoke(dt);
     if (weather) weather.update(dt, S.x, S.z);
+    for (const u of WORLD_UPDATERS) u(dt);
     const speed = Math.hypot(S.vx, S.vz), velAng = speed > 4 ? Math.atan2(S.vx, S.vz) : S.h;
     camH += wrap(S.h + 0.4 * wrap(velAng - S.h) - camH) * Math.min(1, dt * 3.2);
     let fovT = 60 + speed * 0.5;
@@ -2841,7 +2486,8 @@ function visuals(dt) {
     viewOff += (voT - viewOff) * Math.min(1, dt * 6);
     if (Math.abs(viewOff) > 0.5) camera.setViewOffset(innerWidth, innerHeight, viewOff, 0, innerWidth, innerHeight); else camera.clearViewOffset();
     camera.updateProjectionMatrix();
-    sun.position.set(P.x - 60, PY + 80, P.z - 40); sun.target.position.set(P.x, PY, P.z);
+    { const q = 140 / 2048 * 2, sx = Math.round(P.x / q) * q, sz = Math.round(P.z / q) * q;
+      sun.position.set(sx - 60, PY + 80, sz - 40); sun.target.position.set(sx, PY, sz); }
     sky.position.set(P.x, PY, P.z);
     if (!inMenu && mode === 'timed' && ghostBest.length > 1) {
       const u = ghostT / 0.1, i = Math.min(ghostBest.length - 2, Math.floor(u)), f = Math.min(1, u - i), a = ghostBest[i], b = ghostBest[i + 1];
@@ -2869,7 +2515,6 @@ renderer.setAnimationLoop(now => {
   const rdt = Math.min(0.05, (now - last) / 1000); last = now;
   try {
     if (mp) { updateTilt(rdt); mpFrame(rdt); touchHud(); return; }
-    // slow motion after finish
     let dt = rdt;
     if (raceState.sloMo > 0) { dt = rdt * 0.35; raceState.sloMo -= rdt; }
     else if (slowT > 0) { dt = rdt * 0.25; slowT -= rdt; }
@@ -2900,6 +2545,7 @@ try {
   buildRaceGates(currentMap);
   reset();
   setModel(carDef, paintOf(save.car), tune);
+  setShadows(!!save.set.shadows);
   recalc();
   openMenu('home');
 } catch (err) {

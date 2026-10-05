@@ -1,3 +1,4 @@
+import { resolveBody } from './collision.js';
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 
@@ -82,10 +83,7 @@ export function worldCollide(c, R, obst, out) {
   const d = Math.hypot(c.x, c.z) || 1;
   if (d > R - CR) hitWall(c, -c.x / d, -c.z / d, d - (R - CR), out);
   if (ISL > 0 && d < ISL + CR) hitWall(c, c.x / d, c.z / d, ISL + CR - d, out);
-  for (const o of obst) {
-    const dx = c.x - o.x, dz = c.z - o.z, dd = Math.hypot(dx, dz) || 1;
-    if (dd < o.r + CR) hitWall(c, dx / dd, dz / dd, o.r + CR - dd, out);
-  }
+  resolveBody(c, obst, (nx, nz, pen) => hitWall(c, nx, nz, pen, out));
 }
 export const circles = c => {
   const fx = Math.sin(c.h), fz = Math.cos(c.h);
@@ -196,7 +194,7 @@ export function updateMatch(m, inputs, dt) {
   const playing = m.phase === 'play';
   m.time += dt;
   const steps = Math.max(1, Math.ceil(dt / 0.0167)), h = dt / steps;
-  const R = arenaR(m), obst = m.obst.filter(o => Math.hypot(o.x, o.z) < R - 4);
+  const R = arenaR(m), obst = m.obst.filter(o => Math.hypot(o.x, o.z) - (o.br ?? o.r ?? 0) < R - 2);
   for (let s = 0; s < steps; s++) {
     for (const c of m.cars) if (c.alive) {
       stepCar(c, playing ? (inputs[c.i] || none) : none, h);

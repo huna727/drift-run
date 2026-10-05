@@ -19,12 +19,13 @@ html,body{margin:0;height:100%;overflow:hidden;background:#2f2f7a;color:var(--in
 body.touch{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 canvas{display:block}
 button{font-family:inherit}
-#hud{position:fixed;inset:0;pointer-events:none;user-select:none}
+#hud{position:fixed;inset:0;pointer-events:none;user-select:none;z-index:2}
 
-.panel{position:absolute;background:linear-gradient(180deg,var(--grape),var(--grape2));border:5px solid transparent;border-image:var(--hz) 5;border-radius:0;padding:10px 16px;box-shadow:0 8px 22px rgba(0,0,0,.45)}
+/* ---------- HUD ---------- */
+.panel{position:absolute;background:linear-gradient(180deg,rgba(52,41,111,.92),rgba(30,23,80,.92));border:5px solid transparent;border-image:var(--hz) 5;border-radius:0;padding:10px 16px;box-shadow:0 8px 22px rgba(0,0,0,.45);backface-visibility:hidden}
 #drift{top:calc(18px + var(--sat));left:calc(84px + var(--sal));min-width:270px;border:0;border-image:none;background:linear-gradient(90deg,#d6212b 0 10px,rgba(22,40,66,.92) 10px);clip-path:polygon(0 0,100% 0,95% 100%,0 100%);padding:8px 34px 8px 24px}
-#drift::after{content:"";position:absolute;left:10px;right:0;bottom:0;height:5px;background:linear-gradient(90deg,#ffd23f var(--bank,0%),rgba(255,255,255,.12) 0)}
-#obj{font-size:13px;margin-top:4px;color:var(--sun)}
+#drift::after{content:"";position:absolute;left:10px;right:0;bottom:0;height:5px;background:linear-gradient(90deg,#ffd23f var(--bank,0%),rgba(255,255,255,.12) 0);transition:background .12s linear}
+#obj{font-size:13px;margin-top:4px;color:var(--sun);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #score{font-size:46px;line-height:1;font-style:italic;text-shadow:var(--outl)}
 #mult{font-size:22px;font-weight:400;color:var(--sun);margin-left:8px;text-shadow:var(--outl)}
 #meta{font-size:14px;opacity:.95;margin-top:4px}
@@ -36,20 +37,32 @@ button{font-family:inherit}
 #spdBox small{display:block;font-size:11px;color:#fff;opacity:.8}
 #speed small{display:none}
 #boostbar{position:absolute;right:-72px;bottom:0;width:20px;height:118px;background:#0b0820;border:3px solid #0b0820;display:flex;align-items:flex-end;overflow:hidden}
-#boostfill{display:block;width:100%;height:100%;background:linear-gradient(0deg,#7dff3a,#ffd23f 65%,#e3262e)}
-#tire{position:absolute;right:-82px;bottom:-30px;width:40px;height:40px;border-radius:50%;background:radial-gradient(circle,#ddd 0 22%,#111 24% 100%);border:3px solid #0b0820;box-shadow:inset 0 0 0 5px #222}
-#help{left:18px;bottom:18px;padding:6px 14px}
-#toast{position:absolute;left:50%;top:22%;transform:translateX(-50%);font-size:44px;font-style:italic;color:#8dff3a;-webkit-text-stroke:7px #0b0820;paint-order:stroke fill;text-shadow:0 5px 0 #0b0820;opacity:0;white-space:nowrap}
+#boostfill{display:block;width:100%;height:100%;background:linear-gradient(0deg,#7dff3a,#ffd23f 65%,#e3262e);transition:height .12s linear}
+#toast{position:absolute;left:50%;top:22%;transform:translateX(-50%);font-size:44px;font-style:italic;color:#8dff3a;-webkit-text-stroke:7px #0b0820;paint-order:stroke fill;text-shadow:0 5px 0 #0b0820;opacity:0;white-space:nowrap;pointer-events:none}
 #toast.bad{color:#ff5a4d}
 #toast.show{animation:pop 1.6s ease-out forwards}
 @keyframes pop{0%{opacity:0;transform:translate(-50%,12px) scale(.7) rotate(-4deg)}12%{opacity:1;transform:translate(-50%,0) scale(1.12) rotate(2deg)}25%{transform:translate(-50%,0) scale(1) rotate(0)}75%{opacity:1}100%{opacity:0;transform:translate(-50%,-22px)}}
 
+/* ---------- controls hint bar (always visible during play) ---------- */
+#controls{position:absolute;left:50%;bottom:calc(16px + var(--sab));transform:translateX(-50%);display:flex;gap:8px;align-items:center;background:rgba(11,8,32,.72);border:2px solid rgba(255,255,255,.14);border-radius:24px;padding:6px 14px;font-size:12px;opacity:.92;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);white-space:nowrap;max-width:calc(100vw - 40px);overflow-x:auto;scrollbar-width:none;pointer-events:none;transition:opacity .3s ease}
+#controls::-webkit-scrollbar{display:none}
+#controls .ck{display:inline-flex;align-items:center;gap:6px;padding:0 6px}
+#controls .key{background:#fff;color:var(--line);border:2px solid var(--line);border-radius:6px;padding:1px 6px;font-size:12px;font-weight:400;box-shadow:0 2px 0 var(--line);line-height:1.4}
+#controls .lbl{opacity:.85;font-size:12px}
+#controls .sep{opacity:.25;padding:0 2px}
+body.photo #controls{opacity:0}
+body.inmenu #controls{opacity:0}
+body.touch #controls{display:none}
+@media (max-width: 900px){#controls{font-size:11px;padding:5px 10px}}
+@media (max-height: 520px){#controls{display:none}}
+
+/* ---------- buttons ---------- */
 #ui{position:fixed;inset:0;pointer-events:none;z-index:4}
-.cbtn,.cls{pointer-events:auto;border:3px solid var(--line);cursor:pointer;color:var(--line);box-shadow:0 5px 0 var(--line),inset 0 3px 0 rgba(255,255,255,.45);transition:transform .08s,box-shadow .08s}
+.cbtn,.cls{pointer-events:auto;border:3px solid var(--line);cursor:pointer;color:var(--line);box-shadow:0 5px 0 var(--line),inset 0 3px 0 rgba(255,255,255,.45);transition:transform .08s ease,box-shadow .08s ease}
 .cbtn:active,.cls:active{transform:translateY(4px);box-shadow:0 1px 0 var(--line),inset 0 3px 0 rgba(255,255,255,.45)}
 .cbtn:focus-visible,.cls:focus-visible{outline:3px solid #fff;outline-offset:2px}
 #btnSettings{position:absolute;top:calc(18px + var(--sat));left:calc(18px + var(--sal));width:56px;height:56px;border-radius:50%;background:var(--sky);display:grid;place-items:center;padding:0}
-#btnSettings svg{width:34px;height:34px;fill:var(--line);transition:transform .4s}
+#btnSettings svg{width:34px;height:34px;fill:var(--line);transition:transform .4s ease}
 #btnSettings:hover svg{transform:rotate(90deg)}
 #photoX{position:absolute;top:calc(18px + var(--sat));left:calc(86px + var(--sal));height:56px;padding:0 20px;border-radius:28px;background:var(--hot);color:#fff;font-size:20px;display:none;text-shadow:0 2px 0 var(--line)}
 body.photo #photoX{display:block}
@@ -63,12 +76,13 @@ body.photo #photoX{display:block}
 body.photo #classes,body.inmenu #ui{display:none}
 body.photo #hud{display:none}
 
+/* ---------- touch ---------- */
 #touch{position:fixed;inset:0;display:none;z-index:3;touch-action:none}
 body.touch.playing #touch{display:block}
 .zone{position:absolute;top:0;bottom:0;width:50%;pointer-events:none;touch-action:none}
 #zoneL{left:0}#zoneR{right:0}
 body.ctrl-tilt .zone,body.photo.touch .zone{pointer-events:auto}
-.tbtn{position:absolute;border:4px solid var(--line);color:#fff;font-weight:400;cursor:pointer;touch-action:none;box-shadow:0 7px 0 var(--line),inset 0 4px 0 rgba(255,255,255,.4);text-shadow:0 2px 0 var(--line);transition:transform .06s,box-shadow .06s;padding:0;line-height:1.05;opacity:.93}
+.tbtn{position:absolute;border:4px solid var(--line);color:#fff;font-weight:400;cursor:pointer;touch-action:none;box-shadow:0 7px 0 var(--line),inset 0 4px 0 rgba(255,255,255,.4);text-shadow:0 2px 0 var(--line);transition:transform .06s ease,box-shadow .06s ease;padding:0;line-height:1.05;opacity:.93}
 .tbtn.down,.tbtn:active{transform:translateY(5px);box-shadow:0 2px 0 var(--line),inset 0 4px 0 rgba(255,255,255,.4);filter:brightness(1.15)}
 .pedal{bottom:calc(16px + var(--sab));height:96px;border-radius:30px;font-size:24px}
 .pedal.gas{right:calc(16px + var(--sar));width:132px;background:var(--mint)}
@@ -91,7 +105,6 @@ body.mp .tbtn,body.mp #steer{display:none!important}
 #rotate div{font-size:60px}
 @media (orientation:portrait){body.touch.playing #rotate{display:flex}}
 
-body.touch #help{display:none}
 body.touch #drift{top:calc(10px + var(--sat));left:calc(78px + var(--sal));min-width:0;padding:5px 12px;border-radius:16px}
 body.touch #btnSettings{top:calc(10px + var(--sat));left:calc(12px + var(--sal));width:52px;height:52px}
 body.touch #classes{top:calc(10px + var(--sat));right:calc(12px + var(--sar));gap:8px}
@@ -103,9 +116,10 @@ body.touch #obj{font-size:11px;margin-top:2px}
 body.touch #speedo{left:calc(50% - 20px);right:auto;transform:translateX(-50%);bottom:calc(10px + var(--sab));width:118px;height:118px}
 body.touch #gearBox{width:40px;height:44px;font-size:30px;right:-26px}
 body.touch #spdBox{font-size:20px;right:-34px;top:44px;min-width:56px}
-body.touch #boostbar,body.touch #tire{display:none}
+body.touch #boostbar{display:none}
 body.touch #toast{top:16%;font-size:30px}
 
+/* ---------- multiplayer ---------- */
 #mp{position:fixed;inset:0;pointer-events:none;z-index:2;display:none;user-select:none}
 body.mp #mp{display:block}
 #mp.off{display:none!important}
@@ -127,12 +141,13 @@ body.mp #hud,body.mp #classes{display:none}
 #mpBanner{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);font-size:clamp(36px,9vw,92px);color:var(--sun);text-shadow:0 5px 0 var(--line),3px 0 0 var(--line),-3px 0 0 var(--line),0 -3px 0 var(--line),3px 3px 0 var(--line),-3px 3px 0 var(--line);white-space:nowrap;opacity:0;z-index:3}
 #mpBanner.show{animation:bpop 1s ease-out forwards}
 @keyframes bpop{0%{opacity:0;transform:translate(-50%,-50%) scale(.4) rotate(-6deg)}12%{opacity:1;transform:translate(-50%,-50%) scale(1.15) rotate(2deg)}22%{transform:translate(-50%,-50%) scale(1) rotate(0)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-60%) scale(1.05)}}
-.shake{animation:shake .35s}
+.shake{animation:shake .35s ease-out}
 @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px) rotate(-1deg)}40%{transform:translateX(7px) rotate(1deg)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
 @media (prefers-reduced-motion:reduce){#toast.show,#tip.show{animation-duration:.01s}}
 
-#menu{position:fixed;inset:0;z-index:5;display:grid;grid-template-rows:auto 1fr auto;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .22s ease}
-#menu:not(.off){opacity:1;visibility:visible}
+/* ---------- menu ---------- */
+#menu{position:fixed;inset:0;z-index:5;display:grid;grid-template-rows:auto 1fr auto;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .18s ease, visibility 0s linear .18s;will-change:opacity}
+#menu:not(.off){opacity:1;visibility:visible;transition:opacity .18s ease, visibility 0s linear 0s}
 #menu:not(.off) #mTop,#menu:not(.off) #mBody > *,#menu:not(.off) #mFoot{pointer-events:auto}
 #mTop{display:flex;align-items:center;gap:16px;padding:calc(14px + var(--sat)) calc(22px + var(--sar)) 14px calc(22px + var(--sal));background:linear-gradient(180deg,rgba(11,8,32,.94) 0%,rgba(11,8,32,.55) 65%,rgba(11,8,32,0) 100%);position:relative}
 #mTop::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg,var(--sun) 0%,var(--hot) 45%,transparent 90%);opacity:.45;pointer-events:none}
@@ -142,7 +157,7 @@ body.mp #hud,body.mp #classes{display:none}
 .m-pill{display:flex;align-items:baseline;gap:8px;padding:7px 15px;background:rgba(11,8,32,.75);border:2px solid rgba(255,255,255,.12);border-radius:999px;font-size:12px;line-height:1}
 .m-pill .k{opacity:.55;letter-spacing:1.5px;font-size:10px;text-transform:uppercase}
 .m-pill b{font-style:italic;font-size:16px;color:var(--sun);font-weight:400}
-.m-cog{width:44px;height:44px;padding:0;flex:none;display:grid;place-items:center;background:rgba(11,8,32,.75);border:2px solid rgba(255,255,255,.12);border-radius:50%;color:#fff;cursor:pointer;transition:transform .2s ease,background .15s}
+.m-cog{width:44px;height:44px;padding:0;flex:none;display:grid;place-items:center;background:rgba(11,8,32,.75);border:2px solid rgba(255,255,255,.12);border-radius:50%;color:#fff;cursor:pointer;transition:transform .2s ease,background .15s ease}
 .m-cog:hover{background:var(--sky);transform:rotate(45deg)}
 .m-cog svg{width:20px;height:20px;fill:currentColor}
 #mBody{display:grid;grid-template-columns:minmax(380px,500px) 1fr;min-height:0;overflow:hidden;pointer-events:none}
@@ -225,23 +240,25 @@ body.mp #hud,body.mp #classes{display:none}
 .delta.up{color:var(--mint)}
 .delta.dn{color:#ff9db0}
 .bar{height:10px;border-radius:5px;background:rgba(11,8,32,.7);overflow:hidden}
-.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--sky),var(--sun),var(--hot))}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--sky),var(--sun),var(--hot));transition:width .18s ease}
 .bal{margin-top:16px;font-size:15px}
 .bal b{color:var(--sun);font-style:italic;font-weight:400}
+/* map card */
 .map-card{position:relative;display:flex;align-items:center;gap:14px;padding:14px;width:100%;background:rgba(11,8,32,.5);border:2px solid rgba(255,255,255,.06);color:#fff;font:inherit;text-align:left;cursor:pointer;transition:transform .12s ease,border-color .12s ease,background .12s ease}
-.map-card:hover:not(.locked){background:rgba(255,255,255,.06);border-color:var(--sun);transform:translateX(4px)}
-.map-card.locked{cursor:not-allowed;opacity:.55}
+.map-card:hover{background:rgba(255,255,255,.06);border-color:var(--sun);transform:translateX(4px)}
 .map-card.sel{border-color:var(--sun);background:rgba(255,210,63,.1);box-shadow:0 0 0 1px var(--sun) inset}
 .m-thumb{position:relative;flex:none;width:100px;height:76px;border:2px solid rgba(255,255,255,.15);display:grid;place-items:center;background:rgba(0,0,0,.25);overflow:hidden}
 .m-thumb-svg{display:block;width:100%;height:100%}
-.m-thumb.t2{background:linear-gradient(#140824,#3a1a5a)}
-.m-thumb.t3{background:linear-gradient(#d8e8f8,#a8c8e8)}
-.m-thumb.t4{background:linear-gradient(#ffb88a,#5a3a8a)}
-.m-thumb.t5{background:linear-gradient(#ffd8a0,#d07040)}
 .m-info{flex:1;min-width:0}
 .m-info b{display:block;font-size:19px;font-style:italic;font-weight:400}
 .m-info span{font-size:12px;opacity:.7;font-weight:500}
 .m-go{color:var(--sun);font-size:14px;font-style:italic;white-space:nowrap;font-weight:400}
+/* keyboard key list in settings */
+.keys-block{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.keyrow{display:flex;align-items:center;gap:8px;font-size:13px}
+.keyrow kbd{background:#fff;color:var(--line);border:2px solid var(--line);border-radius:6px;padding:1px 8px;font:inherit;font-size:12px;box-shadow:0 2px 0 var(--line);min-width:26px;text-align:center}
+.keyrow span{opacity:.8}
+/* overlay */
 .m-overlay{position:absolute;inset:0;display:grid;place-items:center;background:rgba(11,8,32,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);padding:20px}
 .pause-card{width:min(440px,92vw);padding:26px 30px 22px;background:linear-gradient(180deg,rgba(52,41,111,.96),rgba(30,23,80,.96));border:4px solid transparent;border-image:var(--hz) 4;box-shadow:0 16px 40px rgba(0,0,0,.6)}
 .pause-card .m-title{font-size:40px;margin-bottom:14px}
@@ -282,9 +299,25 @@ body.mp #hud,body.mp #classes{display:none}
 <body>
 <div id="hud">
   <div id="drift" class="panel"><div><span id="score">0</span><span id="mult"></span></div><div id="meta">Angle <b id="angle">0</b>&deg; &middot; Banked <b id="total">0</b> &middot; Best <b id="best">0</b> &middot; Cash $<b id="cash">0</b></div><div id="obj"></div></div>
-  <div id="help" class="panel"><div class="keys"><kbd>W</kbd> gas <kbd>S</kbd> brake <kbd>A</kbd><kbd>D</kbd> steer<br><kbd>Space</kbd> handbrake <kbd>Shift</kbd> boost<br><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> speed <kbd>P</kbd> photo <kbd>C</kbd> cam <kbd>R</kbd> reset<br><kbd>Esc</kbd> menu</div></div>
-  <div id="speedo"><svg id="dial" viewBox="0 0 200 200" aria-hidden="true"></svg><div id="gearBox"><span id="gearN">N</span></div><div id="spdBox"><span id="speed">0<small></small></span><small>km/h</small></div><div id="boostbar"><i id="boostfill"></i></div><div id="tire"></div></div>
+  <div id="speedo"><svg id="dial" viewBox="0 0 200 200" aria-hidden="true"></svg><div id="gearBox"><span id="gearN">N</span></div><div id="spdBox"><span id="speed">0<small></small></span><small>km/h</small></div><div id="boostbar"><i id="boostfill"></i></div></div>
   <div id="toast"></div>
+  <div id="controls">
+    <span class="ck"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span><span class="lbl">drive</span></span>
+    <span class="sep">|</span>
+    <span class="ck"><span class="key">Space</span><span class="lbl">handbrake</span></span>
+    <span class="sep">|</span>
+    <span class="ck"><span class="key">Shift</span><span class="lbl">boost</span></span>
+    <span class="sep">|</span>
+    <span class="ck"><span class="key">C</span><span class="lbl">camera</span></span>
+    <span class="sep">|</span>
+    <span class="ck"><span class="key">P</span><span class="lbl">photo</span></span>
+    <span class="sep">|</span>
+    <span class="ck"><span class="key">R</span><span class="lbl">reset</span></span>
+    <span class="sep">|</span>
+    <span class="ck"><span class="key">1</span><span class="key">2</span><span class="key">3</span><span class="lbl">class</span></span>
+    <span class="sep">|</span>
+    <span class="ck"><span class="key">Esc</span><span class="lbl">menu</span></span>
+  </div>
 </div>
 
 <div id="mp" class="off"><div id="mpBanner" role="status"></div></div>
