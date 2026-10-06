@@ -8,6 +8,7 @@ import { resolveBody, surfaceDist } from './collision.js';
 import { buildCity } from './world_city.js';
 import { buildCargo } from './world_cargo.js';
 import { buildPark } from './world_park.js';
+import { buildMetro } from './world_metro.js';
 
 let WALL = 150, ISL = 38;
 const CR = 1.6;
@@ -212,6 +213,17 @@ const MAPS = [
     decor: 'park', night: false, slippery: false, weather: 'clear',
     wall: 165, island: false, roadHalf: 8, grip: 0.78,
     curb: false, poles: false, sun: 2.8, hemi: 1.15,
+    track: [],
+  },
+  {
+    id: 'metro', name: 'Metro Drive', category: 'freeroam', kind: 'metro',
+    desc: 'A GTA-style city run: downtown, park, docks, billboards, and a looping freeway.',
+    sky: [0xaaccef, 0x426b9c], fog: 0xb7c9d9,
+    terrain: 0x70767a, road: 0x42474f,
+    mountains: [0x698193, 0x5d7966, 0x8194a1],
+    decor: 'metro', night: false, slippery: false, weather: 'clear',
+    wall: 360, island: false, roadHalf: 14, grip: 0.72,
+    curb: false, poles: true, sun: 2.65, hemi: 0.95,
     track: [],
   },
 ];
@@ -584,8 +596,8 @@ function buildWorld(map) {
 
   if (map.category === 'track') buildTrackWorld(map);
   else {
-    const build = { city: buildCity, cargo: buildCargo, park: buildPark }[map.kind];
-    const info = build(map, { group: worldGroup, obst: OBST, updaters: WORLD_UPDATERS });
+    const build = { city: buildCity, cargo: buildCargo, park: buildPark, metro: buildMetro }[map.kind];
+    const info = build(map, { group: worldGroup, obst: OBST, updaters: WORLD_UPDATERS, quality: save.set.quality });
     WALL = info.wall; ISL = info.isl; ROAD_HALF = info.roadHalf; FREE_SPAWN = info.spawn;
     trackSamples = [];
   }
@@ -1115,7 +1127,9 @@ if (!save.owned.includes('hachi')) save.owned.push('hachi');
 if (!CAR_DEFS[save.car] || !save.owned.includes(save.car)) save.car = 'hachi';
 if (!TIERS[save.tier]) save.tier = 0;
 if (!MAPS.find(m => m.id === save.map)) save.map = 'sunset';
-save.set = { ctrl: 'tilt', sens: 1, flip: false, vib: true, mute: false, shadows: true, ...(save.set || {}) };
+save.set = { ctrl: 'tilt', sens: 1, flip: false, vib: true, mute: false, shadows: true, quality: 1, frameSaver: true, ...(save.set || {}) };
+if (!Number.isInteger(save.set.quality) || save.set.quality < 0 || save.set.quality > 2) save.set.quality = 1;
+save.set.frameSaver = save.set.frameSaver !== false;
 save.goals = save.goals || {};
 save.tips = save.tips || 0;
 const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch {} };
@@ -1257,6 +1271,17 @@ function trackIconSvg(map, size = 96) {
       '</svg>';
   }
   // Freeroam: distinct shapes for each kind.
+  if (map.kind === 'metro') {
+    return '<svg viewBox="0 0 96 96" width="100%" height="100%">' +
+      '<rect width="96" height="96" fill="#46515b"/>' +
+      '<circle cx="48" cy="48" r="38" fill="none" stroke="#2a3038" stroke-width="12"/>' +
+      '<circle cx="48" cy="48" r="38" fill="none" stroke="#f2f0e8" stroke-width="1.2" stroke-dasharray="4 3"/>' +
+      '<path d="M8 48H88M48 8V88" stroke="#f2bc35" stroke-width="4"/>' +
+      '<path d="M8 48H88M48 8V88" stroke="#f4f4ef" stroke-width="1" stroke-dasharray="5 4"/>' +
+      '<rect x="19" y="18" width="16" height="20" fill="#70859a" stroke="#121720"/><rect x="61" y="18" width="16" height="20" fill="#8396a9" stroke="#121720"/>' +
+      '<rect x="18" y="59" width="20" height="15" fill="#4b853f" stroke="#121720"/><rect x="60" y="58" width="20" height="16" fill="#bd5843" stroke="#121720"/>' +
+      '</svg>';
+  }
   if (map.kind === 'city') {
     // 3x3 grid of little blocks
     let rects = '';
@@ -1414,10 +1439,13 @@ function renderHome() {
       mHead(h('span', {}, 'DRIFT '), h('span', {}, 'RUN')),
       h('p', { class: 'm-sub' }, 'Slide it, hold it, chain it. Race the clock or just go sideways.'),
       h('div', { class: 'm-actions' },
-        gbtn('>', 'Play', currentMap.name + ' - pick mode', () => openMenu('maps'), 'primary'),
+        h('div', { class: 'm-launch-row' },
+          gbtn('>', 'Maps', currentMap.name + ' - pick a map and mode', () => openMenu('maps'), 'primary'),
+          gbtn('CITY', 'Metro Drive', 'Big city, freeway, docks, and park', () => { setMap('metro'); mode = 'free'; closeMenu(); }, 'primary green')
+        ),
         gbtn('*', 'Shop', 'Buy new cars with banked cash', () => openMenu('shop')),
         gbtn('#', 'Garage', 'Tune, paint, and set stance', () => openMenu('edit')),
-        gbtn('o', 'Multiplayer', 'Split-screen, 2 to 4 players', () => openMenu('mpsetup'), 'blue'),
+        gbtn('⌨', 'Controls', 'WASD drive  •  Space handbrake  •  Shift boost', () => openMenu('settings'), 'blue'),
         gbtn('^', 'Settings', 'Input, camera, audio', () => openMenu('settings'), 'blue')
       )
     )
@@ -1438,13 +1466,38 @@ const segRow = (label, hint, opts, get, set) => {
 };
 function setMute(v) { save.set.mute = v; persist(); if (audio) audio.master.gain.value = v ? 0 : 1; }
 function setPhoto(v) { photo = v; syncHud(); if (v && touchUI) showTip('Tap left or right to bounce the suspension'); }
-function setShadows(v) {
-  save.set.shadows = v; persist();
+let adaptivePixelScale = 1, frameSampleTime = 0, frameSampleCount = 0;
+const qualityCap = () => [0.82, 1.3, 1.75][save.set.quality] || 1.3;
+function refreshShadows() {
+  const v = !!save.set.shadows && save.set.quality !== 0;
   renderer.shadowMap.enabled = v;
   sun.castShadow = v;
-  carGroup.traverse(o => { if (o.isMesh) { o.castShadow = v; } });
+  carGroup.traverse(o => { if (o.isMesh) o.castShadow = v; });
   scene.traverse(o => { if (o.material) { const mm = Array.isArray(o.material) ? o.material : [o.material]; mm.forEach(x => x.needsUpdate = true); } });
 }
+function applyQuality() {
+  renderer.setPixelRatio(Math.min(devicePixelRatio, qualityCap() * adaptivePixelScale));
+  renderer.setSize(innerWidth, innerHeight);
+  refreshShadows();
+}
+function setQuality(i) {
+  save.set.quality = clamp(i, 0, 2); adaptivePixelScale = 1; persist(); applyQuality();
+  if (currentMap.kind === 'metro') { buildWorld(currentMap); buildRaceGates(currentMap); reset(); }
+  if (menu === 'settings') renderSettings();
+}
+function updateFrameSaver(dt) {
+  if (!save.set.frameSaver) {
+    if (adaptivePixelScale !== 1) { adaptivePixelScale = 1; applyQuality(); }
+    return;
+  }
+  frameSampleTime += dt; frameSampleCount++;
+  if (frameSampleTime < 0.9) return;
+  const fps = frameSampleCount / frameSampleTime;
+  const next = fps < 45 ? Math.max(0.62, adaptivePixelScale - 0.1) : fps > 57 ? Math.min(1, adaptivePixelScale + 0.04) : adaptivePixelScale;
+  frameSampleTime = 0; frameSampleCount = 0;
+  if (next !== adaptivePixelScale) { adaptivePixelScale = next; applyQuality(); }
+}
+function setShadows(v) { save.set.shadows = v; persist(); refreshShadows(); }
 function resetSaveData() {
   if (!confirm('Reset all saved data? This wipes cash, cars, tunes, and best times.')) return;
   try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem('driftrun-race-bests'); localStorage.removeItem('driftrun-best'); localStorage.removeItem('driftrun-ach'); } catch {}
@@ -1484,7 +1537,9 @@ function renderSettings() {
   }
   const game = [
     segRow('Camera', null, ['Chase', 'Hood', 'Far'], () => camMode, i => { camMode = i; }),
-    tog('Shadows', 'Nicer look, heavier. Turn off if slow.', () => save.set.shadows, setShadows),
+    segRow('Graphics quality', 'Performance lowers resolution and pauses shadows. Balanced is the recommended default.', ['Performance', 'Balanced', 'High'], () => save.set.quality, setQuality),
+    tog('Frame saver', 'Automatically trims render resolution if the frame rate drops.', () => save.set.frameSaver, v => { save.set.frameSaver = v; persist(); if (!v) updateFrameSaver(0); }),
+    tog('Shadows', save.set.quality === 0 ? 'Paused in Performance quality.' : 'Nicer look, heavier. Turn off if slow.', () => save.set.shadows, setShadows),
     tog('Sound', null, () => !save.set.mute, v => setMute(!v)),
   ];
   if (touchUI) game.push(tog('Vibration', 'Buzz on crashes.', () => save.set.vib, v => { save.set.vib = v; persist(); if (v && navigator.vibrate) navigator.vibrate(30); }));
@@ -1735,7 +1790,7 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 addEventListener('resize', () => {
-  renderer.setSize(innerWidth, innerHeight);
+  applyQuality();
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
 });
 addEventListener('pointerdown', e => { initAudio(); if (menu && !e.target.closest('#mLeft, #mRight, #mTop, #mFoot')) drag = { x: e.clientX, y: e.clientY }; });
@@ -2514,6 +2569,7 @@ let last = performance.now();
 renderer.setAnimationLoop(now => {
   const rdt = Math.min(0.05, (now - last) / 1000); last = now;
   try {
+    updateFrameSaver(rdt);
     if (mp) { updateTilt(rdt); mpFrame(rdt); touchHud(); return; }
     let dt = rdt;
     if (raceState.sloMo > 0) { dt = rdt * 0.35; raceState.sloMo -= rdt; }
@@ -2545,7 +2601,7 @@ try {
   buildRaceGates(currentMap);
   reset();
   setModel(carDef, paintOf(save.car), tune);
-  setShadows(!!save.set.shadows);
+  applyQuality();
   recalc();
   openMenu('home');
 } catch (err) {
